@@ -59,6 +59,53 @@ import Testing
         #expect(TimingPresentation.footerOwners(items: snapshot.items, lastTurn: snapshot.lastTurn) == ["u1": failed, "u2": completed])
     }
 
+    @Test func identityWithoutInitialTimingPreservesEmptyFailureAfterAnotherTurn() throws {
+        var snapshot = SessionSnapshot(session: ref)
+        let frames = [
+            #"{"type":"turn_started","turn_id":"a","prompt":{"text":"First","truncated":false,"offset":0,"total_bytes":5}}"#,
+            #"{"type":"turn_finished","turn_id":"a","timing":{"turn_id":"a","outcome":"failed"}}"#,
+            #"{"type":"turn_started","turn_id":"b","prompt":{"text":"Second","truncated":false,"offset":0,"total_bytes":6}}"#,
+            #"{"type":"turn_finished","turn_id":"b","timing":{"turn_id":"b","outcome":"completed"}}"#,
+        ]
+        for (index, raw) in frames.enumerated() {
+            let event = try JSONDecoder().decode(WireEvent.self, from: Data(raw.utf8))
+            let message = WireCodec.message(for: WireEventFrame(protocolVersion: 1, sessionID: ref.sessionID,
+                registrationEpoch: ref.registrationEpoch, sequence: UInt64(index + 1), generation: 1, event: event))
+            if case .sessionUpdate(let update) = message { snapshot.apply(update) }
+        }
+        let failed = TurnTiming(turnID: "a", outcome: "failed")
+        let completed = TurnTiming(turnID: "b", outcome: "completed")
+        #expect(TimingPresentation.footerOwners(items: snapshot.items, lastTurn: snapshot.lastTurn) ==
+            ["prompt:1": failed, "prompt:3": completed])
+    }
+
+    @Test func phaseBeforeFirstTimingRetainsItsKnownTurnIdentity() {
+        var snapshot = SessionSnapshot(session: ref)
+        snapshot.apply(update(ref, 1, .turnStarted(turnID: "a")))
+        snapshot.apply(update(ref, 2, .responseDelta("First phase")))
+        snapshot.apply(update(ref, 3, .itemAppended(TranscriptItem(id: "tool", .tool(ToolCall(name: "read", summary: "", status: .running))))))
+        #expect(snapshot.items[0].turnTiming == TurnTiming(turnID: "a"))
+        let failed = TurnTiming(turnID: "a", elapsedWorkMilliseconds: 12000, outcome: "failed")
+        snapshot.apply(update(ref, 4, .timingChanged(failed, thoughtTimeMilliseconds: nil)))
+        snapshot.apply(update(ref, 5, .turnFinished(turnID: "a", outcome: .failed)))
+        #expect(snapshot.items[0].turnTiming == failed)
+        #expect(TimingPresentation.footerOwners(items: snapshot.items, lastTurn: snapshot.lastTurn) == ["response:a": failed])
+    }
+
+    @Test func attachedActiveTurnWithoutTimingSeedsOnlyIdentity() throws {
+        let data = try Data(contentsOf: Contract.root.appendingPathComponent("golden/frames/response_attached.json"))
+        let frame = try JSONDecoder().decode(WireFrame.self, from: data)
+        guard case .response(let response) = frame, case .attached(let attached) = response.result else { return }
+        var wire = attached.snapshot
+        wire.turn?.timing = nil
+        let snapshot = WireCodec.snapshot(wire)
+        let identity = TurnTiming(turnID: "turn:48213:12")
+        #expect(snapshot.activeTurnTiming == identity)
+        #expect(snapshot.items.last?.turnTiming == identity)
+        #expect(snapshot.activeTurnTiming?.elapsedWorkMilliseconds == nil)
+        #expect(snapshot.activeTurnTiming?.outcome == nil)
+    }
+
     @Test func unknownTurnMetadataAndOutcomeSurviveWireAndDomainMapping() throws {
         let raw = #"{"turn_id":"t","outcome":"future","future_clock":{"paused":true},"elapsed_work_ms":12}"#
         let wire = try JSONDecoder().decode(WireTurnTiming.self, from: Data(raw.utf8))

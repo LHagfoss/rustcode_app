@@ -103,7 +103,7 @@ public struct SessionSnapshot: Sendable, Equatable {
         self.session = session
         self.items = items
         self.activeTurnID = activeTurnID
-        self.activeTurnTiming = activeTurnTiming
+        self.activeTurnTiming = activeTurnTiming ?? activeTurnID.map { TurnTiming(turnID: $0) }
         self.lastTurn = lastTurn
         self.snapshotID = snapshotID
         self.canSteer = canSteer
@@ -204,7 +204,7 @@ public struct SessionSnapshot: Sendable, Equatable {
             items[index].content = .assistant(assistant)
         case .turnStarted(let turnID):
             activeTurnID = turnID
-            activeTurnTiming = nil
+            activeTurnTiming = TurnTiming(turnID: turnID)
         case .timingChanged(let timing, let thoughtTimeMilliseconds):
             if timing.turnID == activeTurnID { activeTurnTiming = timing }
             for index in items.indices {

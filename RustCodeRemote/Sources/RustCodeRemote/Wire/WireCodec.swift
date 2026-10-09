@@ -349,7 +349,7 @@ public struct WireCodec: RemoteCodec {
             // The prompt belongs to the transcript; the event is the only place it arrives.
             var changes: [SessionEvent] = [
                 .itemAppended(TranscriptItem(id: "prompt:\(frame.sequence)", .user(started.prompt.text),
-                    turn: started.timing.map(timing)))
+                    turn: started.timing.map(timing) ?? started.turnID.map { TurnTiming(turnID: $0) }))
             ]
             if let turnID = started.turnID ?? started.timing?.turnID {
                 changes.append(.turnStarted(turnID: turnID))
@@ -453,7 +453,8 @@ public struct WireCodec: RemoteCodec {
                 items.append(TranscriptItem(
                     id: "response:\(turn.turnID)",
                     .assistant(AssistantText(text: turn.liveResponse.text, isStreaming: true,
-                        thoughtTimeMilliseconds: turn.thoughtTimeMilliseconds, turn: turn.timing.map(timing)))
+                        thoughtTimeMilliseconds: turn.thoughtTimeMilliseconds,
+                        turn: turn.timing.map(timing) ?? TurnTiming(turnID: turn.turnID)))
                 ))
             }
         }
