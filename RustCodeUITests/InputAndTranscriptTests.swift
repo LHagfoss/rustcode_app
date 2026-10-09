@@ -89,6 +89,9 @@ final class InputAndTranscriptTests: XCTestCase {
         XCTAssertEqual(app.buttons.matching(identifier: "Thinking · 4s").count, 1)
         XCTAssertTrue(app.staticTexts["Response · 12s"].exists)
         XCTAssertTrue(app.staticTexts["Completed · Worked for 32s"].exists)
+        XCTAssertEqual(app.staticTexts.matching(identifier: "Completed · Worked for 32s").count, 1)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Completed at ")).firstMatch.exists)
+        XCTAssertTrue(app.staticTexts["Failed · Worked for 8s"].exists)
     }
 
     private func launchChat(draft: String) -> XCUIApplication {

@@ -217,10 +217,22 @@ records the commit in `Resources/remote-protocol/SOURCE.txt`.
 The integration tests need a real `rustcode` binary and are skipped unless you name one:
 
 ```sh
-RUSTCODE_GATEWAY_BIN=/path/to/rustcode swift test
+RUSTCODE_GATEWAY_BIN=/path/to/rustcode swift test --package-path RustCodeRemote
 ```
 
-They run everything on loopback, in a temporary configuration directory:
+The default gateway/session fixtures run on explicit loopback in a temporary configuration
+directory. To also verify automatic LAN selection and actual QR-payload pairing on a Mac
+with a reachable LAN, set `RUSTCODE_LAN_PAIRING=1` with the same binary:
+
+```sh
+RUSTCODE_GATEWAY_BIN=/path/to/rustcode RUSTCODE_LAN_PAIRING=1 \
+  swift test --package-path RustCodeRemote
+```
+
+The LAN check connects the package's live client to the address the gateway advertises;
+it does not install or run the app on a physical phone.
+
+The real-host suites cover:
 
 - `GatewayIntegrationTests` pair by QR payload and by code, authenticate, revoke a device
   and watch the connection close, restart the gateway, and trip the pairing rate limit.

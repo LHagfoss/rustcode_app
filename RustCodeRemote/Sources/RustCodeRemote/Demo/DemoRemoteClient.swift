@@ -608,7 +608,13 @@ public actor DemoRemoteClient: RemoteClient {
 
         let notesRef = SessionRef(sessionID: idleSessionID, registrationEpoch: 1)
         let notesItems = [
+            TranscriptItem(id: "notes-failed", .user("Try the earlier draft"),
+                turn: TurnTiming(turnID: "demo-failed", endedAt: "2026-10-09T18:39:00+02:00",
+                    elapsedWorkMilliseconds: 8000, outcome: "failed")),
             TranscriptItem(id: "notes-3", .user("Draft release notes for everything merged since the last tag.")),
+            TranscriptItem(id: "notes-phase", .assistant(AssistantText(text: "I’ll inspect the merged changes first.",
+                responseTimeMilliseconds: 3000,
+                turn: TurnTiming(turnID: "demo-notes", elapsedWorkMilliseconds: 32000, outcome: "completed")))),
             TranscriptItem(
                 id: "notes-4",
                 .subagent(SubagentSummary(

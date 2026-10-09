@@ -42,6 +42,23 @@ import Testing
         #expect(assistant.thoughtTimeMilliseconds == nil)
     }
 
+    @Test func emptyFailedTurnRemainsInHistoryAfterALaterTurnCompletes() {
+        let failed = TurnTiming(turnID: "failed", outcome: "failed")
+        let completed = TurnTiming(turnID: "completed", outcome: "completed")
+        var snapshot = SessionSnapshot(session: ref, items: [
+            TranscriptItem(id: "u1", .user("First"), turn: TurnTiming(turnID: "failed"))
+        ], activeTurnID: "failed")
+        snapshot.apply(update(ref, 1, .timingChanged(failed, thoughtTimeMilliseconds: nil)))
+        snapshot.apply(update(ref, 2, .turnFinished(turnID: "failed", outcome: .failed)))
+        snapshot.apply(update(ref, 3, .itemAppended(TranscriptItem(id: "u2", .user("Second"), turn: TurnTiming(turnID: "completed")))))
+        snapshot.apply(update(ref, 4, .turnStarted(turnID: "completed")))
+        snapshot.apply(update(ref, 5, .timingChanged(completed, thoughtTimeMilliseconds: nil)))
+        snapshot.apply(update(ref, 6, .turnFinished(turnID: "completed", outcome: .completed)))
+        #expect(snapshot.items[0].turn == failed)
+        #expect(snapshot.lastTurn == completed)
+        #expect(TimingPresentation.footerOwners(items: snapshot.items, lastTurn: snapshot.lastTurn) == ["u1": failed, "u2": completed])
+    }
+
     @Test func unknownTurnMetadataAndOutcomeSurviveWireAndDomainMapping() throws {
         let raw = #"{"turn_id":"t","outcome":"future","future_clock":{"paused":true},"elapsed_work_ms":12}"#
         let wire = try JSONDecoder().decode(WireTurnTiming.self, from: Data(raw.utf8))

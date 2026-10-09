@@ -348,7 +348,8 @@ public struct WireCodec: RemoteCodec {
         case .turnStarted(let started):
             // The prompt belongs to the transcript; the event is the only place it arrives.
             var changes: [SessionEvent] = [
-                .itemAppended(TranscriptItem(id: "prompt:\(frame.sequence)", .user(started.prompt.text)))
+                .itemAppended(TranscriptItem(id: "prompt:\(frame.sequence)", .user(started.prompt.text),
+                    turn: started.timing.map(timing)))
             ]
             if let turnID = started.turnID ?? started.timing?.turnID {
                 changes.append(.turnStarted(turnID: turnID))
@@ -493,8 +494,12 @@ public struct WireCodec: RemoteCodec {
 
     static func item(_ message: WireMessage) -> TranscriptItem {
         let text = message.content.text
+        func entry(_ content: TranscriptItem.Content) -> TranscriptItem {
+            TranscriptItem(id: message.messageID, content, turn: message.turn.map(timing),
+                timestamp: message.timestamp, metadata: message.metadata)
+        }
         if let tool = message.tool {
-            return TranscriptItem(id: message.messageID, .tool(ToolCall(
+            return entry(.tool(ToolCall(
                 name: tool.name,
                 summary: tool.detail ?? "",
                 output: text.isEmpty ? nil : text,
@@ -503,14 +508,14 @@ public struct WireCodec: RemoteCodec {
             )))
         }
         switch message.role {
-        case "user": return TranscriptItem(id: message.messageID, .user(text))
-        case "assistant": return TranscriptItem(id: message.messageID, .assistant(AssistantText(
+        case "user": return entry(.user(text))
+        case "assistant": return entry(.assistant(AssistantText(
             text: text, responseTimeMilliseconds: message.responseTimeMilliseconds,
             thoughtTimeMilliseconds: message.thoughtTimeMilliseconds, timestamp: message.timestamp,
             completedAt: message.completedAt, turn: message.turn.map(timing), metadata: message.metadata
         )))
         // `role` is a free string on the wire; anything else is shown without a speaker.
-        default: return TranscriptItem(id: message.messageID, .notice(text))
+        default: return entry(.notice(text))
         }
     }
 

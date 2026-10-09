@@ -177,7 +177,7 @@ public struct SessionSnapshot: Sendable, Equatable {
             } else {
                 items.append(TranscriptItem(
                     id: responseItemID(sequence: sequence),
-                    .assistant(AssistantText(text: text, isStreaming: true, turn: activeTurnTiming))
+                    .assistant(AssistantText(text: text, isStreaming: true, turn: activeTurnTiming)), turn: activeTurnTiming
                 ))
             }
         case .toolFinished(let itemID, let succeeded, let isPending, let output, let isOutputTruncated):
@@ -208,6 +208,7 @@ public struct SessionSnapshot: Sendable, Equatable {
         case .timingChanged(let timing, let thoughtTimeMilliseconds):
             if timing.turnID == activeTurnID { activeTurnTiming = timing }
             for index in items.indices {
+                if items[index].turnTiming?.turnID == timing.turnID { items[index].turn = timing }
                 guard case .assistant(var assistant) = items[index].content else { continue }
                 if assistant.turn?.turnID == timing.turnID ||
                    (assistant.isStreaming && timing.turnID == activeTurnID) {

@@ -3,8 +3,22 @@ import SwiftUI
 
 struct TranscriptRow: View {
     let item: TranscriptItem
+    var footer: TurnTiming? = nil
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            content
+            if let footer {
+                TurnFooter(timing: footer)
+            } else if item.turnTiming == nil, case .assistant(let assistant) = item.content,
+                      let completedAt = assistant.completedAt {
+                TurnFooter(legacyCompletedAt: completedAt)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
         switch item.content {
         case .user(let text):
             UserMessage(text: text)
@@ -24,6 +38,32 @@ struct TranscriptRow: View {
                     Button("Copy", systemImage: "doc.on.doc") { Clipboard.copy(text) }
                 }
         }
+    }
+}
+
+struct TurnFooter: View {
+    var timing: TurnTiming? = nil
+    var legacyCompletedAt: String? = nil
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if let timing, timing.outcome != nil {
+                Text(TimingPresentation.turnLabel(timing))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            if let timestamp = TimingPresentation.endTimestamp(timing: timing, legacy: legacyCompletedAt) {
+                let prefix = TimingPresentation.endLabel(outcome: timing?.outcome)
+                Group {
+                    if let date = TimingPresentation.date(timestamp) {
+                        Text("\(prefix) \(date.formatted(date: .abbreviated, time: .standard))")
+                    } else {
+                        Text("\(prefix) \(timestamp)")
+                    }
+                }
+                .font(.caption).foregroundStyle(.tertiary)
+            }
+        }
+        .accessibilityIdentifier("turnFooter")
     }
 }
 
@@ -68,20 +108,6 @@ private struct AssistantMessage: View {
             if let response = assistant.responseTimeMilliseconds {
                 Text("Response · \(TimingPresentation.duration(response))")
                     .font(.caption).foregroundStyle(.secondary)
-            }
-            if let turn = assistant.turn, turn.outcome != nil {
-                Text(TimingPresentation.turnLabel(turn))
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            if let timestamp = assistant.completedAt {
-                Group {
-                    if let date = TimingPresentation.date(timestamp) {
-                        Text("Finished \(date.formatted(date: .abbreviated, time: .standard))")
-                    } else {
-                        Text("Finished \(timestamp)")
-                    }
-                }
-                .font(.caption).foregroundStyle(.tertiary)
             }
         }
         .contentShape(.contextMenuPreview, .rect(cornerRadius: 12))
