@@ -209,12 +209,26 @@ private struct SessionActivityView: View {
 
     private var isEmpty: Bool {
         snapshot.subagents.isEmpty && snapshot.backgroundTasks.isEmpty && snapshot.pendingPrompts.isEmpty
-            && snapshot.omitted.total == 0
+            && snapshot.omitted.total == 0 && snapshot.activeTurnTiming == nil && unrepresentedLastTurn == nil
+    }
+
+    private var unrepresentedLastTurn: TurnTiming? {
+        guard let turn = snapshot.lastTurn else { return nil }
+        return snapshot.items.contains { item in
+            if case .assistant(let assistant) = item.content { assistant.turn?.turnID == turn.turnID }
+            else { false }
+        } ? nil : turn
     }
 
     var body: some View {
         if !isEmpty {
             VStack(alignment: .leading, spacing: 10) {
+                if let turn = snapshot.activeTurnTiming ?? unrepresentedLastTurn {
+                    Text(TimingPresentation.turnLabel(turn,
+                        isWaiting: snapshot.pendingApproval != nil || snapshot.pendingQuestion != nil))
+                        .font(.caption).foregroundStyle(.secondary)
+                        .accessibilityIdentifier("turnTiming")
+                }
                 ForEach(snapshot.subagents) { item in
                     if case .subagent(let subagent) = item.content {
                         SubagentRow(subagent: subagent)

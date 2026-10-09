@@ -655,7 +655,13 @@ public actor DemoRemoteClient: RemoteClient {
 
                         - [x] Review merged changes
                         - [ ] Tag the release
-                        """
+                        """,
+                    responseTimeMilliseconds: 12000,
+                    thoughtTimeMilliseconds: 4000,
+                    completedAt: "2026-10-09T18:40:32+02:00",
+                    turn: TurnTiming(turnID: "demo-notes", startedAt: "2026-10-09T18:40:00+02:00",
+                        endedAt: "2026-10-09T18:40:32+02:00", elapsedWorkMilliseconds: 32000,
+                        outcome: "completed")
                 ))
             ),
         ]

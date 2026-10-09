@@ -46,18 +46,42 @@ private struct UserMessage: View {
 private struct AssistantMessage: View {
     let assistant: AssistantText
 
+    private var blocks: [AssistantBlock] {
+        AssistantBlock.parse(assistant.text, isStreaming: assistant.isStreaming)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ForEach(Array(AssistantBlock.parse(assistant.text, isStreaming: assistant.isStreaming).enumerated()), id: \.offset) { _, block in
+            ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
                 switch block {
                 case .markdown(let text):
                     MarkdownText(text: text)
                 case .thinking(let text, let isComplete):
-                    ThinkingBlock(text: text, isThinking: assistant.isStreaming && !isComplete)
+                    ThinkingBlock(text: text, isThinking: assistant.isStreaming && !isComplete,
+                        title: TimingPresentation.thinkingLabel(at: index, in: blocks,
+                            milliseconds: assistant.thoughtTimeMilliseconds) ?? "Thinking")
                 }
             }
             if assistant.isStreaming {
                 StreamingIndicator()
+            }
+            if let response = assistant.responseTimeMilliseconds {
+                Text("Response · \(TimingPresentation.duration(response))")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            if let turn = assistant.turn, turn.outcome != nil {
+                Text(TimingPresentation.turnLabel(turn))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            if let timestamp = assistant.completedAt {
+                Group {
+                    if let date = TimingPresentation.date(timestamp) {
+                        Text("Finished \(date.formatted(date: .abbreviated, time: .standard))")
+                    } else {
+                        Text("Finished \(timestamp)")
+                    }
+                }
+                .font(.caption).foregroundStyle(.tertiary)
             }
         }
         .contentShape(.contextMenuPreview, .rect(cornerRadius: 12))
@@ -70,6 +94,7 @@ private struct AssistantMessage: View {
 private struct ThinkingBlock: View {
     let text: String
     let isThinking: Bool
+    var title = "Thinking"
     @State private var isExpanded = false
 
     var body: some View {
@@ -82,7 +107,7 @@ private struct ThinkingBlock: View {
                 .contextMenu { TextActions(text: text, readableText: MarkdownText.plainText(text)) }
         } label: {
             HStack(spacing: 8) {
-                Label("Thinking", systemImage: "brain")
+                Label(title, systemImage: "brain")
                 if isThinking { ProgressView().controlSize(.mini).accessibilityHidden(true) }
                 Spacer(minLength: 0)
             }

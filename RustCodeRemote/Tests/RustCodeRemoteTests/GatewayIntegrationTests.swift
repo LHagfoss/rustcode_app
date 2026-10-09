@@ -30,7 +30,7 @@ struct GatewayIntegrationTests {
 
             process = Process()
             process.executableURL = URL(fileURLWithPath: binary)
-            process.arguments = ["remote", "serve", "--port", "\(port)"]
+            process.arguments = ["remote", "serve", "--bind", "127.0.0.1", "--port", "\(port)"]
             process.environment = ["RUSTCODE_CONFIG_DIR": configuration.path, "PATH": "/usr/bin:/bin"]
             process.standardOutput = FileHandle.nullDevice
             process.standardError = FileHandle.nullDevice
@@ -164,7 +164,7 @@ struct GatewayIntegrationTests {
         // Same configuration directory and port: the same host, started again.
         let restarted = Process()
         restarted.executableURL = URL(fileURLWithPath: gateway.binary)
-        restarted.arguments = ["remote", "serve", "--port", "\(gateway.port)"]
+        restarted.arguments = ["remote", "serve", "--bind", "127.0.0.1", "--port", "\(gateway.port)"]
         restarted.environment = ["RUSTCODE_CONFIG_DIR": gateway.configuration.path, "PATH": "/usr/bin:/bin"]
         restarted.standardOutput = FileHandle.nullDevice
         restarted.standardError = FileHandle.nullDevice

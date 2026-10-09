@@ -90,10 +90,24 @@ public struct TranscriptItem: Identifiable, Hashable, Sendable {
 public struct AssistantText: Hashable, Sendable {
     public var text: String
     public var isStreaming: Bool
+    public var responseTimeMilliseconds: UInt64?
+    public var thoughtTimeMilliseconds: UInt64?
+    public var timestamp: String?
+    public var completedAt: String?
+    public var turn: TurnTiming?
+    public var metadata: [String: JSONValue]
 
-    public init(text: String, isStreaming: Bool = false) {
+    public init(text: String, isStreaming: Bool = false, responseTimeMilliseconds: UInt64? = nil,
+                thoughtTimeMilliseconds: UInt64? = nil, timestamp: String? = nil,
+                completedAt: String? = nil, turn: TurnTiming? = nil, metadata: [String: JSONValue] = [:]) {
         self.text = text
         self.isStreaming = isStreaming
+        self.responseTimeMilliseconds = responseTimeMilliseconds
+        self.thoughtTimeMilliseconds = thoughtTimeMilliseconds
+        self.timestamp = timestamp
+        self.completedAt = completedAt
+        self.turn = turn
+        self.metadata = metadata
     }
 }
 
