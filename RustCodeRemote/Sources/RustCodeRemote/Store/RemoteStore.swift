@@ -44,6 +44,7 @@ public final class RemoteStore {
     public private(set) var attached: SessionSnapshot?
     public private(set) var isLoadingHistory = false
     public private(set) var isCreatingSession = false
+    private var hostGeneration: UInt64 = 0
     private var pendingCreation: (directory: String?, requestID: RequestID)?
     /// True while the full detail of the pending approval is being fetched.
     public private(set) var isLoadingApprovalDetails = false
@@ -244,7 +245,10 @@ public final class RemoteStore {
 
     public func browseDirectories(path: String? = nil) async throws -> DirectoryListing {
         guard connection == .connected else { throw RemoteError.notConnected }
-        return try await client.browseDirectories(path: path)
+        let generation = hostGeneration
+        let listing = try await client.browseDirectories(path: path)
+        guard generation == hostGeneration else { throw RemoteError.notConnected }
+        return listing
     }
 
     /// An uncertain creation keeps its request ID, so an explicit retry cannot create twice.
@@ -254,24 +258,24 @@ public final class RemoteStore {
             notice = "Check the session list or retry the previous folder before starting another session."
             return false
         }
+        let creationGeneration = hostGeneration
         isCreatingSession = true
-        defer { isCreatingSession = false }
-        let creationHost = host?.gatewayID
+        defer { if hostGeneration == creationGeneration { isCreatingSession = false } }
         let id = pendingCreation?.requestID ?? RequestID()
         pendingCreation = (directory, id)
         do {
             let session = try await client.createSession(directory: directory, requestID: id)
-            guard host?.gatewayID == creationHost else { return false }
+            guard hostGeneration == creationGeneration else { return false }
             pendingCreation = nil
             if !sessions.contains(where: { $0.id == session.id }) { sessions.insert(session, at: 0) }
             select(session.id)
             return true
         } catch RemoteError.rejected(let rejection) {
-            guard host?.gatewayID == creationHost else { return false }
+            guard hostGeneration == creationGeneration else { return false }
             pendingCreation = nil
             notice = RemoteError.rejected(rejection).localizedDescription
         } catch {
-            guard host?.gatewayID == creationHost else { return false }
+            guard hostGeneration == creationGeneration else { return false }
             notice = "Session creation wasn’t confirmed. Check the session list or retry this folder safely."
         }
         return false
@@ -502,6 +506,8 @@ public final class RemoteStore {
     }
 
     private func resetHostState() {
+        hostGeneration &+= 1
+        isCreatingSession = false
         client = liveClient
         credential = nil
         host = nil
