@@ -1041,6 +1041,30 @@ private final class DelayLog: Sendable {
         #expect(await client.submitCalls.isEmpty)
     }
 
+    @Test func rePairingSameHostDuringUploadCannotSendOldDraft() async {
+        let client = StubClient()
+        var snapshot = SessionSnapshot(session: makeSession("s1").ref)
+        snapshot.capabilities = ["upload_image"]
+        await client.set(snapshot: snapshot)
+        await client.set(uploadDelay: .milliseconds(100))
+        let store = makeStore(client)
+        store.bootstrap()
+        #expect(await waitUntil { store.connection == .connected })
+        store.select("s1")
+        #expect(await waitUntil { store.attached != nil })
+        let pending = Task { await store.send("old draft", images: [PromptImage(data: Data([1]), mimeType: "image/png")]) }
+        #expect(await waitUntil { await client.uploadCalls.count == 1 })
+        await store.unpair()
+        await store.pair(.manual(address: HostAddress(host: "localhost", port: 7878), code: "123456"), deviceName: "Test")
+        #expect(await waitUntil { store.connection == .connected })
+        store.select("s1")
+        #expect(await waitUntil { store.attached != nil })
+        #expect(await pending.value == false)
+        #expect(await client.submitCalls.isEmpty)
+        #expect(!store.isUploadingImages)
+        await store.unpair()
+    }
+
     @Test func unsupportedHostAndOversizedImagesNeverUploadOrSubmit() async {
         let client = StubClient()
         let store = makeStore(client)

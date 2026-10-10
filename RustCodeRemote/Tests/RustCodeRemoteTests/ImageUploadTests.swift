@@ -48,3 +48,19 @@ import Testing
         await client.disconnect()
     }
 }
+
+@Suite struct ImageAttachmentPresentationTests {
+    let reference = "![image](file:///private/config/session/remote-images/" + String(repeating: "a", count: 64) + "/photo-1.png)"
+
+    @Test func validatedUploadMarkersDisplayWithoutPrivatePaths() {
+        #expect(ImageAttachmentPresentation.displayText("Describe\n\n" + reference) == "Describe\n\nImage attachment")
+        #expect(ImageAttachmentPresentation.displayText("![image](file:///demo/photo.png)") == "Image attachment")
+    }
+
+    @Test func literalExamplesAndUnrelatedFilesRemainUnchanged() {
+        for raw in ["Example: " + reference, "```markdown\n" + reference + "\n```", "    " + reference,
+                    "![image](file:///Users/me/photo.png)", "![image](https://example.com/photo.png)"] {
+            #expect(ImageAttachmentPresentation.displayText(raw) == raw)
+        }
+    }
+}
