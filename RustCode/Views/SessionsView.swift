@@ -13,12 +13,16 @@ extension EnvironmentValues {
 
 struct SessionsView: View {
     @Environment(RemoteStore.self) private var store
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var drafts = ChatDrafts()
     @State private var showsSettings = LaunchOptions.current.presentsSettings
     @State private var unpairsAfterSettings = false
     @State private var showsSidebar = false
+    @GestureState(resetTransaction: Transaction(animation: UIAccessibility.isReduceMotionEnabled ? nil : .snappy(duration: 0.25)))
+    private var drawerDrag = DrawerDrag()
+    @State private var dismissedKeyboardForDrag = false
     @State private var columns: NavigationSplitViewVisibility = .all
     @AccessibilityFocusState private var sidebarFocused: Bool
     var presentsAttentionOnLaunch = false
@@ -28,46 +32,60 @@ struct SessionsView: View {
             if sizeClass == .compact {
                 GeometryReader { geometry in
                     let width = min(geometry.size.width * 0.84, 360)
+                    let offset = min(width, max(0, (showsSidebar ? width : 0) + drawerDrag.offset))
+                    let progress = offset / width
+                    let obscured = showsSidebar || offset > 0
                     ZStack(alignment: .leading) {
+                        Color(uiColor: .systemBackground).ignoresSafeArea()
+                        NavigationStack {
+                            SessionSidebar(showsSettings: $showsSettings, didSelect: closeSidebar)
+                                .toolbar {
+                                    ToolbarItem(placement: .topBarLeading) {
+                                        Button("Close sessions", systemImage: "sidebar.left") { closeSidebar() }
+                                            .accessibilityFocused($sidebarFocused)
+                                    }
+                                }
+                        }
+                        .frame(width: width)
+                        .offset(x: -32 * (1 - progress))
+                        .opacity(progress)
+                        .allowsHitTesting(showsSidebar)
+                        .accessibilityHidden(!showsSidebar)
+                        .accessibilityIdentifier("sessionSidebar")
+                        .accessibilityAction(.escape, closeSidebar)
+
                         NavigationStack {
                             chat
-                                .disabled(showsSidebar)
-                                .accessibilityHidden(showsSidebar)
-                                .environment(\.isChatObscured, showsSidebar)
+                                .background(colorScheme == .dark ? Color(white: 0.07) : Color(uiColor: .systemBackground))
+                                .disabled(obscured)
+                                .accessibilityHidden(obscured)
+                                .environment(\.isChatObscured, obscured)
                         }
-                            .overlay {
-                                if showsSidebar {
-                                    Button { closeSidebar() } label: {
-                                        Color.black.opacity(0.18).ignoresSafeArea()
-                                    }
-                                    .buttonStyle(.plain)
-                                    .accessibilityLabel("Close sessions")
+                        .background(Color(uiColor: .secondarySystemBackground))
+                        .overlay {
+                            if obscured {
+                                Button { closeSidebar() } label: {
+                                    Color.black.opacity(0.12 * progress).ignoresSafeArea()
                                 }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Close sessions")
                             }
-                            .offset(x: showsSidebar ? width : 0)
-                            .accessibilityHidden(showsSidebar)
-                        if showsSidebar {
-                            NavigationStack {
-                                SessionSidebar(showsSettings: $showsSettings, didSelect: closeSidebar)
-                                    .toolbar {
-                                        ToolbarItem(placement: .topBarLeading) {
-                                            Button("Close sessions", systemImage: "sidebar.left") { closeSidebar() }
-                                                .accessibilityFocused($sidebarFocused)
-                                        }
-                                    }
-                            }
-                            .frame(width: width)
-                            .transition(.move(edge: .leading))
-                            .accessibilityIdentifier("sessionSidebar")
-                            .onAppear { sidebarFocused = true }
-                            .accessibilityAction(.escape, closeSidebar)
-                            .simultaneousGesture(DragGesture().onEnded { value in
-                                if value.translation.width < -60 && abs(value.translation.height) < 60 { closeSidebar() }
-                            })
                         }
+                        .clipShape(.rect(cornerRadius: 28 * progress))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 28 * progress)
+                                .stroke(.white.opacity(0.08 * progress), lineWidth: 0.5)
+                                .allowsHitTesting(false)
+                        }
+                        .shadow(color: .black.opacity(0.3 * progress), radius: 16, x: -4)
+                        .offset(x: offset)
+                        .accessibilityHidden(obscured)
                     }
                     .clipped()
+                    .simultaneousGesture(drawerGesture(width: width, opening: !showsSidebar))
                     .animation(reduceMotion ? nil : .snappy(duration: 0.25), value: showsSidebar)
+                    .onChange(of: showsSidebar) { _, open in sidebarFocused = open }
+
                 }
             } else {
                 NavigationSplitView(columnVisibility: $columns) {
@@ -108,6 +126,40 @@ struct SessionsView: View {
                 Button("Show sessions", systemImage: "sidebar.left") { showsSidebar = true; columns = .all }
             }
         }
+    }
+
+    private struct DrawerDrag {
+        var horizontal: Bool?
+        var offset: CGFloat = 0
+    }
+
+    private func drawerGesture(width: CGFloat, opening: Bool) -> some Gesture {
+        DragGesture(minimumDistance: 10)
+            .updating($drawerDrag) { value, state, transaction in
+                guard !opening || value.startLocation.x <= 24 else { return }
+                if state.horizontal == nil {
+                    state.horizontal = abs(value.translation.width) > abs(value.translation.height) * 1.3
+                }
+                guard state.horizontal == true else { return }
+                transaction.animation = nil
+                state.offset = opening ? max(0, value.translation.width) : min(0, value.translation.width)
+            }
+            .onChanged { value in
+                guard !opening || value.startLocation.x <= 24 else { return }
+                guard !dismissedKeyboardForDrag, drawerDrag.horizontal != false,
+                      abs(value.translation.width) > abs(value.translation.height) * 1.3 else { return }
+                dismissedKeyboardForDrag = true
+                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            }
+            .onEnded { value in
+                defer { dismissedKeyboardForDrag = false }
+                guard !opening || value.startLocation.x <= 24 else { return }
+                guard drawerDrag.horizontal == true else { return }
+                let predicted = (opening ? 0 : width) + value.predictedEndTranslation.width
+                withAnimation(reduceMotion ? nil : .snappy(duration: 0.25)) {
+                    showsSidebar = predicted > width * 0.5
+                }
+            }
     }
 
     private func closeSidebar() { showsSidebar = false }

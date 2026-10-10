@@ -6,6 +6,7 @@ struct ModelPicker: View {
     @Environment(RemoteStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
+    @State private var isSearching = false
 
     private var choices: [SessionModelChoice] {
         let models = store.attached?.settings?.models ?? []
@@ -40,7 +41,12 @@ struct ModelPicker: View {
                         ForEach(choices, id: \.id) { choice in
                             Button {
                                 let effort = choice.reasoningEfforts.contains(settings.reasoningEffort) ? settings.reasoningEffort : "default"
-                                Task { await store.setSessionSettings(model: choice.id, reasoningEffort: effort) }
+                                Task {
+                                    if await store.setSessionSettings(model: choice.id, reasoningEffort: effort) {
+                                        isSearching = false
+                                        query = ""
+                                    }
+                                }
                             } label: {
                                 HStack(spacing: 12) {
                                     VStack(alignment: .leading, spacing: 3) {
@@ -59,7 +65,7 @@ struct ModelPicker: View {
                     }
                 }
             }
-            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search models")
+            .searchable(text: $query, isPresented: $isSearching, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search models")
             .scrollDismissesKeyboard(.interactively)
             .navigationTitle("Model & Effort")
             .navigationBarTitleDisplayMode(.inline)

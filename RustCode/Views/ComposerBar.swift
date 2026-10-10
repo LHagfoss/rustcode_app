@@ -62,7 +62,7 @@ struct ComposerBar<Accessory: View, Controls: View>: View {
                     isFocused = false
                     showsActions = true
                 } label: {
-                    Image(systemName: "plus").font(.title3).frame(width: buttonSize, height: buttonSize)
+                    Image(systemName: "plus").font(.system(size: 18, weight: .regular)).frame(width: buttonSize, height: buttonSize)
                 }
                 .buttonStyle(.plain).accessibilityLabel("Chat actions")
                 .disabled(isSending || isImporting)
@@ -80,6 +80,7 @@ struct ComposerBar<Accessory: View, Controls: View>: View {
         }
         .contentShape(shape)
         .glassSurface(in: shape)
+        .background(Color(uiColor: .secondarySystemBackground), in: shape)
         .sensoryFeedback(.impact(weight: .light), trigger: sendCount)
         .sensoryFeedback(.stop, trigger: stopCount)
         .sheet(isPresented: $showsActions, onDismiss: performNextAction) {
