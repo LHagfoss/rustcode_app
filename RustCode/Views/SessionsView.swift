@@ -1,25 +1,84 @@
 import RustCodeRemote
 import SwiftUI
 
+struct OpenSessionSidebarAction: Sendable {
+    var perform: @MainActor @Sendable (Bool) -> Void = { _ in }
+    @MainActor func callAsFunction(toggle: Bool = false) { perform(toggle) }
+}
+
+extension EnvironmentValues {
+    @Entry var openSessionSidebar = OpenSessionSidebarAction()
+}
+
 struct SessionsView: View {
     @Environment(RemoteStore.self) private var store
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var drafts = ChatDrafts()
     @State private var showsSettings = LaunchOptions.current.presentsSettings
     @State private var unpairsAfterSettings = false
+    @State private var showsSidebar = false
+    @State private var columns: NavigationSplitViewVisibility = .all
+    @AccessibilityFocusState private var sidebarFocused: Bool
     var presentsAttentionOnLaunch = false
 
     var body: some View {
-        NavigationSplitView {
-            SessionSidebar(showsSettings: $showsSettings)
-        } detail: {
-            if store.selectedSessionID != nil {
-                TranscriptView(presentsAttentionOnAppear: presentsAttentionOnLaunch)
+        Group {
+            if sizeClass == .compact {
+                GeometryReader { geometry in
+                    let width = min(geometry.size.width * 0.84, 360)
+                    ZStack(alignment: .leading) {
+                        NavigationStack { chat }
+                            .overlay {
+                                if showsSidebar {
+                                    Button { closeSidebar() } label: {
+                                        Color.black.opacity(0.18).ignoresSafeArea()
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityLabel("Close sessions")
+                                }
+                            }
+                            .offset(x: showsSidebar ? width : 0)
+                            .accessibilityHidden(showsSidebar)
+                        if showsSidebar {
+                            NavigationStack {
+                                SessionSidebar(showsSettings: $showsSettings, didSelect: closeSidebar)
+                                    .toolbar {
+                                        ToolbarItem(placement: .topBarLeading) {
+                                            Button("Close sessions", systemImage: "sidebar.left") { closeSidebar() }
+                                                .accessibilityFocused($sidebarFocused)
+                                        }
+                                    }
+                            }
+                            .frame(width: width)
+                            .transition(.move(edge: .leading))
+                            .accessibilityIdentifier("sessionSidebar")
+                            .onAppear { sidebarFocused = true }
+                            .accessibilityAction(.escape, closeSidebar)
+                            .simultaneousGesture(DragGesture().onEnded { value in
+                                if value.translation.width < -60 && abs(value.translation.height) < 60 { closeSidebar() }
+                            })
+                        }
+                    }
+                    .clipped()
+                    .animation(reduceMotion ? nil : .snappy(duration: 0.25), value: showsSidebar)
+                }
             } else {
-                ContentUnavailableView(
-                    "No Session Selected",
-                    systemImage: "bubble.left.and.text.bubble.right",
-                    description: Text("Choose a shared session to watch it and continue it from here.")
-                )
+                NavigationSplitView(columnVisibility: $columns) {
+                    SessionSidebar(showsSettings: $showsSettings)
+                        .navigationSplitViewColumnWidth(min: 280, ideal: 320, max: 380)
+                } detail: { chat }
+                .toolbar(removing: .sidebarToggle)
             }
+        }
+        .environment(drafts)
+        .environment(\.openSessionSidebar, OpenSessionSidebarAction { toggle in
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            if sizeClass == .compact { showsSidebar = true } else { columns = toggle && columns == .all ? .detailOnly : .all }
+        })
+        .onAppear { if store.selectedSessionID == nil { showsSidebar = true } }
+        .onChange(of: store.selectedSessionID) { _, selected in
+            if selected != nil { showsSidebar = false }
         }
         .sheet(isPresented: $showsSettings, onDismiss: {
             guard unpairsAfterSettings else { return }
@@ -29,11 +88,29 @@ struct SessionsView: View {
             SettingsView { unpairsAfterSettings = true }
         }
     }
+
+    @ViewBuilder
+    private var chat: some View {
+        if store.selectedSessionID != nil {
+            TranscriptView(presentsAttentionOnAppear: presentsAttentionOnLaunch)
+        } else {
+            ContentUnavailableView {
+                Label("Choose a Session", systemImage: "bubble.left.and.text.bubble.right")
+            } description: {
+                Text("Open your sessions or start a new conversation on your Mac.")
+            } actions: {
+                Button("Show sessions", systemImage: "sidebar.left") { showsSidebar = true; columns = .all }
+            }
+        }
+    }
+
+    private func closeSidebar() { showsSidebar = false }
 }
 
 private struct SessionSidebar: View {
     @Environment(RemoteStore.self) private var store
     @Binding var showsSettings: Bool
+    var didSelect: () -> Void = {}
     @State private var query = ""
     @State private var showsNewSession = false
 
@@ -45,16 +122,20 @@ private struct SessionSidebar: View {
         }
     }
 
-    private var selection: Binding<String?> {
-        Binding(get: { store.selectedSessionID }, set: { store.select($0) })
-    }
 
     var body: some View {
-        List(selection: selection) {
+        List {
             Section {
                 ForEach(sessions) { session in
-                    SessionRow(session: session, badge: store.badges.badge(for: session))
-                        .tag(session.id)
+                    Button {
+                        store.select(session.id)
+                        didSelect()
+                    } label: {
+                        SessionRow(session: session, badge: store.badges.badge(for: session))
+                            .foregroundStyle(.primary)
+                    }
+                    .buttonStyle(.plain)
+                    .listRowBackground(session.id == store.selectedSessionID ? Color.accentColor.opacity(0.12) : Color.clear)
                         .contextMenu {
                             Button("Copy Title", systemImage: "doc.on.doc") {
                                 Clipboard.copy(session.displayTitle)
