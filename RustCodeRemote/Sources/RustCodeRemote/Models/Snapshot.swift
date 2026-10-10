@@ -70,6 +70,7 @@ public struct SessionSnapshot: Sendable, Equatable {
     public var activeTurnID: String?
     public var activeTurnTiming: TurnTiming?
     public var lastTurn: TurnTiming?
+    public var commands: [SessionCommandChoice]
     public var capabilities: Set<String>
     public var settings: SessionSettings?
     public var snapshotID: String?
@@ -103,7 +104,8 @@ public struct SessionSnapshot: Sendable, Equatable {
         lastTurn: TurnTiming? = nil,
         snapshotID: String? = nil,
         settings: SessionSettings? = nil,
-        capabilities: Set<String> = []
+        capabilities: Set<String> = [],
+        commands: [SessionCommandChoice] = []
     ) {
         self.session = session
         self.items = items
@@ -113,6 +115,7 @@ public struct SessionSnapshot: Sendable, Equatable {
         self.snapshotID = snapshotID
         self.settings = settings
         self.capabilities = capabilities
+        self.commands = commands
         self.canSteer = canSteer
         self.pendingQuestion = pendingQuestion
         self.pendingApproval = pendingApproval
