@@ -20,6 +20,17 @@ import Testing
         }
     }
 
+    @Test func creationRequiresFinalAppliedReceipt() throws {
+        let session = #"{"session_id":"created","registration_epoch":1,"title":"","model":"model","activity":"idle","attention":{"approval":false,"question":false},"health":"live"}"#
+        func frame(_ receipt: String) -> String {
+            #"{"kind":"response","protocol_version":1,"request_id":"create","receipt":"\#(receipt)","result":{"type":"session_created","session":\#(session)}}"#
+        }
+        #expect(try WireCodec().decode(frame("unknown")) == .reply(requestID: RequestID("create"), .receipt(.unknown)))
+        #expect(try WireCodec().decode(frame("received")) == .reply(requestID: RequestID("create"), .receipt(.received)))
+        guard case .reply(_, .sessionCreated(let created)) = try WireCodec().decode(frame("applied")) else { Issue.record("Missing creation"); return }
+        #expect(created.id == "created")
+    }
+
     @Test func directoryResponsePreservesCanonicalPathAndTruncation() throws {
         let json = #"{"kind":"response","protocol_version":1,"request_id":"d","result":{"type":"directories","path":"/Users/me","parent":"/Users","directories":[{"name":"My Project","path":"/Users/me/My Project"}],"truncated":true}}"#
         let decoded = try WireCodec().decode(json)
