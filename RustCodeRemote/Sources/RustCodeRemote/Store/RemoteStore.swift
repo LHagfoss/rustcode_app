@@ -87,6 +87,7 @@ public final class RemoteStore {
     public func isQuestionCancellationPending(_ questionID: String) -> Bool {
         guard let session = attached?.session else { return false }
         return isPending("cancel-question:\(questionID)", in: session)
+            || (attached?.pendingQuestion?.id == questionID && hasPendingCancellation)
     }
 
     private func isPending(_ key: String, in session: SessionRef) -> Bool {
@@ -377,10 +378,18 @@ public final class RemoteStore {
     public func cancelQuestion(_ question: PendingQuestion) async -> Bool {
         guard let snapshot = attached, snapshot.pendingQuestion?.id == question.id else { return false }
         guard snapshot.capabilities.contains("cancel_question") else {
-            notice = "This host does not support cancelling a question. Update and restart the RustCode gateway, or stop the turn."
-            return false
+            // Older hosts expose only turn cancellation. The captured turn ID gives the
+            // same Escape behavior without risking cancellation of a newer turn.
+            guard let turnID = snapshot.activeTurnID else {
+                notice = "The host did not provide a turn ID. Cancel this question in the host terminal."
+                return false
+            }
+            return await perform(.cancelQuestion, in: snapshot.session, key: "cancel:\(turnID)") { client, id in
+                try await client.cancel(turnID: turnID, in: snapshot.session, requestID: id)
+            }
         }
-        return await perform(.cancelQuestion, in: snapshot.session, key: "cancel-question:\(question.id)") { client, id in
+        let key = snapshot.activeTurnID.map { "cancel:\($0)" } ?? "cancel-question:\(question.id)"
+        return await perform(.cancelQuestion, in: snapshot.session, key: key) { client, id in
             try await client.cancelQuestion(question.id, in: snapshot.session, requestID: id)
         }
     }

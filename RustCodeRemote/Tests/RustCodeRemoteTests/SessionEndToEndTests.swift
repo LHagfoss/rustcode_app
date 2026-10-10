@@ -77,11 +77,17 @@ struct SessionEndToEndTests {
         guard case .snapshot(var state) = attachment.start else { Issue.record("missing snapshot"); return }
         var updates = attachment.updates.makeAsyncIterator()
         #expect(try await client.submit("Ask three questions", to: session.ref, requestID: RequestID()).state == .applied)
-        while state.pendingQuestion == nil, let update = try await updates.next() { state.apply(update) }
+        while state.pendingQuestion == nil, let update = try await updates.next() {
+            state.apply(update)
+            if update.changes.contains(where: { if case .turnFinished = $0 { true } else { false } }) { break }
+        }
         let first = try #require(state.pendingQuestion)
         let answerID = RequestID()
         #expect(try await client.answerQuestion(first.id, with: QuestionAnswer(selectedOptionIDs: [first.options[0].id]), in: session.ref, requestID: answerID).state == .applied)
-        while state.pendingQuestion == nil || state.pendingQuestion?.id == first.id, let update = try await updates.next() { state.apply(update) }
+        while state.pendingQuestion == nil || state.pendingQuestion?.id == first.id, let update = try await updates.next() {
+            state.apply(update)
+            if update.changes.contains(where: { if case .turnFinished = $0 { true } else { false } }) { break }
+        }
         let second = try #require(state.pendingQuestion)
         #expect(state.isRunning)
         #expect(try await client.getRequestStatus(answerID, in: session.ref).state == .applied)

@@ -42,6 +42,7 @@ private actor StubClient: RemoteClient {
         updates?.yield(SessionUpdate(session: snapshot.session, sequence: snapshot.sequence, event: .replaced(snapshot)))
     }
     private(set) var queueTexts: [String] = []
+    private(set) var cancelledTurnIDs: [String] = []
     private(set) var cancelCalls: [RequestID] = []
     private(set) var submitCalls: [RequestID] = []
     private(set) var statusCalls: [RequestID] = []
@@ -161,6 +162,7 @@ private actor StubClient: RemoteClient {
 
     func cancel(turnID: String, in session: SessionRef, requestID: RequestID) async throws -> RequestReceipt {
         cancelCalls.append(requestID)
+        cancelledTurnIDs.append(turnID)
         return RequestReceipt(requestID: requestID, state: .unknown)
     }
 
@@ -776,6 +778,25 @@ private final class DelayLog: Sendable {
         #expect(store.attached?.items.contains { $0.content == .notice("Queued: second") } == true)
     }
 
+    @Test func oldHostQuestionCancelTargetsOnlyTheObservedTurn() async {
+        let client = StubClient()
+        let question = PendingQuestion(id: "q1", prompt: "First?", options: [], allowsFreeText: true)
+        await client.set(snapshot: SessionSnapshot(session: makeSession("s1").ref, activeTurnID: "turn-old", pendingQuestion: question))
+        let store = makeStore(client)
+        store.bootstrap()
+        #expect(await waitUntil { store.connection == .connected })
+        store.select("s1")
+        #expect(await waitUntil { store.attached != nil })
+        #expect(await store.cancelQuestion(question))
+        #expect(store.isQuestionCancellationPending(question.id))
+        #expect(await store.cancelTurn() == false)
+        await client.publishSnapshot(SessionSnapshot(session: makeSession("s1").ref, activeTurnID: "turn-new"))
+        #expect(await waitUntil { store.attached?.activeTurnID == "turn-new" })
+        #expect(await store.cancelQuestion(question) == false)
+        #expect(await client.cancelledTurnIDs == ["turn-old"])
+        #expect(await client.questionCancelCalls == 0)
+    }
+
     @Test func uncertainAnswerCanBeCancelledWithoutDuplicatingTheCancellation() async {
         let client = StubClient()
         let question = PendingQuestion(id: "q1", prompt: "First?", options: [], allowsFreeText: true)
@@ -792,6 +813,7 @@ private final class DelayLog: Sendable {
         #expect(await store.cancelQuestion(question))
         #expect(store.isQuestionCancellationPending(question.id))
         #expect(await store.cancelQuestion(question) == false)
+        #expect(await store.cancelTurn() == false)
         #expect(await store.answer(question, with: QuestionAnswer(text: "two")) == false)
         #expect(await client.questionCancelCalls == 1)
     }

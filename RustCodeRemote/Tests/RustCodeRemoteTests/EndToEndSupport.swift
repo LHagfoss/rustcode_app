@@ -41,10 +41,14 @@ final class FakeModelServer: Sendable {
             listener.newConnectionHandler = { [weak self, chunkDelay, askQuestions] connection in
                 guard let self else { connection.cancel(); return }
                 connection.start(queue: .global())
-                Self.readRequest(on: connection, received: Data()) {
+                Self.readRequest(on: connection, received: Data()) { body in
+                    let request = (try? JSONSerialization.jsonObject(with: Data(body.utf8))) as? [String: Any]
+                    let tools = request?["tools"] as? [[String: Any]] ?? []
+                    let advertisesQuestions = tools.contains { ($0["function"] as? [String: Any])?["name"] as? String == "ask_question" }
                     let asksNow = self.hasAsked.withLock { asked in
-                        defer { asked = true }
-                        return askQuestions && !asked
+                        guard askQuestions, advertisesQuestions, !asked else { return false }
+                        asked = true
+                        return true
                     }
                     Task { await Self.streamReply(on: connection, delay: chunkDelay, askQuestions: asksNow) }
                 }
@@ -58,7 +62,7 @@ final class FakeModelServer: Sendable {
     }
 
     /// Reads until the headers and the announced body are in.
-    private static func readRequest(on connection: NWConnection, received: Data, then respond: @escaping @Sendable () -> Void) {
+    private static func readRequest(on connection: NWConnection, received: Data, then respond: @escaping @Sendable (String) -> Void) {
         connection.receive(minimumIncompleteLength: 1, maximumLength: 1 << 20) { data, _, isComplete, error in
             var received = received
             received.append(data ?? Data())
@@ -69,7 +73,7 @@ final class FakeModelServer: Sendable {
                     .first { $0.hasPrefix("content-length:") }
                     .flatMap { Int($0.dropFirst("content-length:".count).trimmingCharacters(in: .whitespaces)) } ?? 0
                 if text[headerEnd.upperBound...].utf8.count >= length {
-                    respond()
+                    respond(String(text[headerEnd.upperBound...]))
                     return
                 }
             }
