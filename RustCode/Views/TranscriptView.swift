@@ -316,8 +316,11 @@ struct TranscriptView: View {
         case "terminal":
             store.notice = "\(name) needs the terminal on your Mac. \(catalog?.description ?? "")"
             return false
-        default:
+        case "execute", "model_picker":
             return await store.executeCommand(command)
+        default:
+            store.notice = "This command needs a newer version of the app. Update the app or use \(name) on your Mac."
+            return false
         }
     }
 
