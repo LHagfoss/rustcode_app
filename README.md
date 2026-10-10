@@ -71,9 +71,12 @@ wrong attempts the host locks pairing for a few minutes and the app says for how
 
 ## Session controls and input
 
-The controls above the composer show the current model and thinking effort. Available
-choices come from the host; changes are idle-only and appear after host confirmation.
-Older hosts without the settings capability show the model without editable menus.
+The controls inside the composer show the current model and thinking effort. Tap either
+to inspect host-provided choices; changes become available when the turn is idle and
+appear after host confirmation. Missing controls show an update/restart explanation.
+After updating RustCode, restart an older remote gateway with `rustcode remote stop`
+then `rustcode remote serve`, and reconnect the app. Running session owners reconnect
+to the gateway; new protocol operations also require current session owners.
 Blank titles use `Session <short ID>`. Turn totals come from the complete host session;
 unknown totals (including some compacted sessions) are omitted.
 
@@ -84,7 +87,17 @@ an expanded native text view. Drag the transcript down to dismiss the keyboard
 interactively, or tap its content. Opening the keyboard preserves your reading position.
 
 Questions distinguish selected options from a written answer. Switching modes preserves
-the written draft; a failed submission leaves the answer available to retry.
+the written draft; a failed submission leaves the answer available to retry. Chained
+questions advance in the same sheet. Cancel questions ends the chain and turn, matching
+Esc in the terminal. Approval failures keep their sheet open. Unconfirmed actions occupy
+one review row, and repeated Stop taps cannot resend the same cancellation.
+
+Type `/` for command suggestions. Supported commands are `/help`, `/status`, `/info`,
+`/about`, `/usage`, `/perf`, `/context`, `/tasks`, `/mcp`, `/model [profile]`,
+`/effort [value]`, `/title <title>` (also `/change_title`) and `/cancel`. Results appear
+in the transcript without entering model history. `/cancel` targets the current
+question or turn. Session lifecycle, authentication and configuration-editing commands
+remain terminal-only; unsupported commands show a rejection and preserve your draft.
 
 ## Requirements
 
@@ -156,7 +169,7 @@ Launch arguments, for the Simulator or the scheme's Run arguments:
 | Argument | Effect |
 | --- | --- |
 | `-demo` | Start in demo mode. |
-| `-demoSession approval\|question\|idle` | Open that demo session directly. |
+| `-demoSession approval\|question\|questions\|idle` | Open that demo session directly. |
 | `-demoSheet` | Present the session's pending question or approval when it appears. |
 
 ```sh
