@@ -4,6 +4,17 @@ import XCTest
 final class InputAndTranscriptTests: XCTestCase {
     override func setUpWithError() throws { continueAfterFailure = false }
 
+    func testLeavingHostDismissesSettingsBeforeShowingPairing() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo", "-demoSettings"]
+        app.launch()
+        XCTAssertTrue(app.buttons["Exit Demo"].waitForExistence(timeout: 5))
+        app.buttons["Exit Demo"].tap()
+        XCTAssertTrue(app.textFields["Host address and port"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.navigationBars["Settings"].exists)
+        XCTAssertTrue(app.buttons["Try the Demo"].exists)
+    }
+
     func testPairingKeyboardCanAdvanceAndDismissWithoutLosingInput() {
         let app = XCUIApplication()
         app.launch()
