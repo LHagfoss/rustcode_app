@@ -42,6 +42,7 @@ public actor DemoRemoteClient: RemoteClient {
             seed.append(chain)
         }
         for var session in seed {
+            session.state.commands = Self.commandCatalog
             session.state.capabilities = ["cancel_question", "execute_command"]
             session.state.settings = SessionSettings(models: [
                 .init(id: "demo-balanced", model: "demo-model", reasoningEfforts: ["default", "medium", "high"]),
@@ -112,6 +113,7 @@ public actor DemoRemoteClient: RemoteClient {
         let summary = SessionSummary(ref: ref, title: "", workspace: directory ?? "/Users/demo", model: "demo-model", turnCount: 0)
         var state = SessionSnapshot(session: ref)
         state.settings = sessions[Self.idleSessionID]?.state.settings
+        state.commands = Self.commandCatalog
         state.capabilities = ["cancel_question", "execute_command"]
         sessions[ref.sessionID] = Session(summary: summary, state: state)
         order.insert(ref.sessionID, at: 0)
