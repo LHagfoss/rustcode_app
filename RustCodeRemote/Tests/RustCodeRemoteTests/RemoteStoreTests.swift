@@ -28,6 +28,11 @@ private actor StubClient: RemoteClient {
         return stream
     }
     func emit(_ receipt: RequestReceipt) { receiptContinuation?.yield(receipt) }
+    private(set) var questionCancelCalls = 0
+    func cancelQuestion(_ questionID: String, in session: SessionRef, requestID: RequestID) async throws -> RequestReceipt {
+        questionCancelCalls += 1
+        return RequestReceipt(requestID: requestID, state: .unknown)
+    }
     private(set) var settingsCalls = 0
     func setSessionSettings(model: String, reasoningEffort: String, in session: SessionRef, requestID: RequestID) async throws -> RequestReceipt {
         settingsCalls += 1
@@ -567,6 +572,7 @@ private final class DelayLog: Sendable {
 
         #expect(await store.send("deploy it"))
         #expect(store.visibleRequests.count == 1)
+        #expect(!store.hasPendingSettings)
         #expect(store.visibleRequests.first?.phase == .settled(.unknown))
         let id = store.visibleRequests[0].id
 
@@ -770,6 +776,26 @@ private final class DelayLog: Sendable {
         #expect(store.attached?.items.contains { $0.content == .notice("Queued: second") } == true)
     }
 
+    @Test func uncertainAnswerCanBeCancelledWithoutDuplicatingTheCancellation() async {
+        let client = StubClient()
+        let question = PendingQuestion(id: "q1", prompt: "First?", options: [], allowsFreeText: true)
+        await client.set(snapshot: SessionSnapshot(session: makeSession("s1").ref, activeTurnID: "turn-1", pendingQuestion: question, capabilities: ["cancel_question"]))
+        await client.set(answerResult: .success(.unknown))
+        let store = makeStore(client)
+        store.bootstrap()
+        #expect(await waitUntil { store.connection == .connected })
+        store.select("s1")
+        #expect(await waitUntil { store.attached != nil })
+        #expect(await store.answer(question, with: QuestionAnswer(text: "one")))
+        #expect(store.isQuestionPending(question.id))
+        #expect(!store.isQuestionCancellationPending(question.id))
+        #expect(await store.cancelQuestion(question))
+        #expect(store.isQuestionCancellationPending(question.id))
+        #expect(await store.cancelQuestion(question) == false)
+        #expect(await store.answer(question, with: QuestionAnswer(text: "two")) == false)
+        #expect(await client.questionCancelCalls == 1)
+    }
+
     @Test func confirmedSettingsSnapshotReleasesGuardWithoutInventingReceiptSuccess() async {
         let client = StubClient()
         let settings = SessionSettings(models: [.init(id: "m", model: "m", reasoningEfforts: ["low", "high"])], selectedModel: "m", reasoningEffort: "low", canChange: true)
@@ -781,10 +807,12 @@ private final class DelayLog: Sendable {
         store.select("s1")
         #expect(await waitUntil { store.attached != nil })
         #expect(await store.setSessionSettings(model: "m", reasoningEffort: "high"))
+        #expect(store.hasPendingSettings)
         #expect(await store.setSessionSettings(model: "m", reasoningEffort: "low") == false)
         snapshot.settings?.reasoningEffort = "high"
         await client.publishSnapshot(snapshot)
         #expect(await waitUntil { store.attached?.settings?.reasoningEffort == "high" })
+        #expect(!store.hasPendingSettings)
         #expect(store.visibleRequests.first?.phase == .settled(.unknown))
         #expect(await store.setSessionSettings(model: "m", reasoningEffort: "low"))
         #expect(await client.settingsCalls == 2)

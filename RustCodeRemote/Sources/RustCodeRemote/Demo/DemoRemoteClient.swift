@@ -37,6 +37,7 @@ public actor DemoRemoteClient: RemoteClient {
             chain.summary.ref = ref
             chain.summary.title = "Three follow-up questions"
             chain.state.session = ref
+            chain.state.pendingQuestion?.chainLength = 3
             seed.append(chain)
         }
         for var session in seed {
@@ -261,10 +262,10 @@ public actor DemoRemoteClient: RemoteClient {
             }
             let labels = question.options.filter { answer.selectedOptionIDs.contains($0.id) }.map(\.label)
             let reply = (labels + [answer.text].compactMap { $0 }.filter { !$0.isEmpty }).joined(separator: ", ")
-            emit(session.sessionID, .questionChanged(nil))
             emit(session.sessionID, .itemAppended(TranscriptItem(id: nextID("user"), .user(reply))))
             if session.sessionID == Self.questionsSessionID, questionID != "question-demo-3" {
                 var next = question
+                next.position = question.position + 1
                 next.id = questionID == "question-demo-1" ? "question-demo-2" : "question-demo-3"
                 next.header = next.id == "question-demo-2" ? "Migration" : "Validation"
                 next.prompt = next.id == "question-demo-2" ? "How should existing sessions be migrated?" : "Which validation should run first?"
@@ -272,6 +273,7 @@ public actor DemoRemoteClient: RemoteClient {
                 publishSummaries()
                 return .applied
             }
+            emit(session.sessionID, .questionChanged(nil))
             publishSummaries()
             startTask(in: session.sessionID) { await $0.runAfterAnswer(reply, in: session.sessionID) }
             return .applied

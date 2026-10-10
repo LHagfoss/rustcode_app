@@ -69,6 +69,11 @@ public final class RemoteStore {
     @ObservationIgnored private var finalReceipts: [RequestID: RequestReceipt] = [:]
     @ObservationIgnored private var receiptTask: Task<Void, Never>?
 
+    public var hasPendingSettings: Bool {
+        guard let session = attached?.session else { return false }
+        return isPending("settings", in: session)
+    }
+
     public var hasPendingCancellation: Bool {
         guard let snapshot = attached, let turn = snapshot.activeTurnID else { return false }
         return isPending("cancel:\(turn)", in: snapshot.session)
@@ -76,7 +81,12 @@ public final class RemoteStore {
 
     public func isQuestionPending(_ questionID: String) -> Bool {
         guard let session = attached?.session else { return false }
-        return isPending("question:\(questionID)", in: session)
+        return isPending("question:\(questionID)", in: session) || isQuestionCancellationPending(questionID)
+    }
+
+    public func isQuestionCancellationPending(_ questionID: String) -> Bool {
+        guard let session = attached?.session else { return false }
+        return isPending("cancel-question:\(questionID)", in: session)
     }
 
     private func isPending(_ key: String, in session: SessionRef) -> Bool {
@@ -358,7 +368,7 @@ public final class RemoteStore {
             notice = "This host does not support remote slash commands. Update RustCode on the host."
             return false
         }
-        return await perform(.submit(command), in: snapshot.session, key: "command:\(command)") { client, id in
+        return await perform(.command(command), in: snapshot.session, key: "command:\(command)") { client, id in
             try await client.executeCommand(command, in: snapshot.session, requestID: id)
         }
     }
@@ -370,7 +380,7 @@ public final class RemoteStore {
             notice = "This host does not support cancelling a question. Update and restart the RustCode gateway, or stop the turn."
             return false
         }
-        return await perform(.answer, in: snapshot.session, key: "question:\(question.id)") { client, id in
+        return await perform(.cancelQuestion, in: snapshot.session, key: "cancel-question:\(question.id)") { client, id in
             try await client.cancelQuestion(question.id, in: snapshot.session, requestID: id)
         }
     }
@@ -398,7 +408,7 @@ public final class RemoteStore {
 
     @discardableResult
     public func answer(_ question: PendingQuestion, with answer: QuestionAnswer) async -> Bool {
-        guard let session = attached?.session, !answer.isEmpty else { return false }
+        guard let session = attached?.session, !answer.isEmpty, !isQuestionCancellationPending(question.id) else { return false }
         return await perform(.answer, in: session, key: "question:\(question.id)") { client, id in
             try await client.answerQuestion(question.id, with: answer, in: session, requestID: id)
         }
@@ -704,6 +714,7 @@ public final class RemoteStore {
             let key = pending.key
             let retired = (key.hasPrefix("cancel:") && key != "cancel:\(snapshot.activeTurnID ?? "")")
                 || (key.hasPrefix("question:") && key != "question:\(snapshot.pendingQuestion?.id ?? "")")
+                || (key.hasPrefix("cancel-question:") && key != "cancel-question:\(snapshot.pendingQuestion?.id ?? "")")
                 || (key.hasPrefix("approval:") && key != "approval:\(snapshot.pendingApproval?.batchID ?? "")")
                 || (key == "settings" && snapshot.settings?.selectedModel == pending.desiredModel
                     && snapshot.settings?.reasoningEffort == pending.desiredEffort)

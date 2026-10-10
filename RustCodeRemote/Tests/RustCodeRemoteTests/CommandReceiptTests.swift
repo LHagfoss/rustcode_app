@@ -48,9 +48,18 @@ import Testing
             guard case .snapshot(let state) = attachment.start else { Issue.record("missing snapshot"); return }
             let question = try #require(state.pendingQuestion)
             #expect(question.id == "question-demo-\(number)")
+            #expect(question.position == number)
+            #expect(question.chainLength == 3)
             #expect(state.isRunning)
             let receipt = try await client.answerQuestion(question.id, with: QuestionAnswer(selectedOptionIDs: ["segments"]), in: session, requestID: RequestID())
             #expect(receipt.state == .applied)
+            for try await update in attachment.updates {
+                if let change = update.changes.first(where: { if case .questionChanged = $0 { true } else { false } }),
+                   case .questionChanged(let next) = change {
+                    #expect((next == nil) == (number == 3))
+                    break
+                }
+            }
         }
         await client.disconnect()
     }
