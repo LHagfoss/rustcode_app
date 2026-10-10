@@ -2,6 +2,6 @@ Copied by Scripts/sync-protocol.sh. Do not edit these files by hand.
 
 repository: LHagfoss/rustcode
 path:       docs/remote-protocol/v1
-ref:        45cfbe1a
-commit:     45cfbe1ab607ff378ad0d64aa6c2d1dae231b885
+ref:        60c75a09
+commit:     60c75a09eeb56d5730db11bd30eb8c9a32c4048f
 golden:     16 requests, 45 frames
