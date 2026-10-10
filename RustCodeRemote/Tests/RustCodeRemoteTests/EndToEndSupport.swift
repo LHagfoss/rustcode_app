@@ -48,7 +48,7 @@ final class FakeModelServer: Sendable {
                     let tools = request?["tools"] as? [[String: Any]] ?? []
                     let advertisesQuestions = tools.contains { ($0["function"] as? [String: Any])?["name"] as? String == "ask_question" }
                     let asksNow = self.hasAsked.withLock { asked in
-                        guard ((askQuestions && advertisesQuestions) || jsonCommand != nil), !asked else { return false }
+                        guard ((askQuestions && advertisesQuestions) || (jsonCommand != nil && body.contains("Run the command") && body.contains("run_command"))), !asked else { return false }
                         asked = true
                         return true
                     }

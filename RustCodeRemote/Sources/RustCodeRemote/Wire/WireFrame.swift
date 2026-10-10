@@ -797,10 +797,15 @@ public struct WireMessage: Codable, Equatable, Sendable {
 }
 
 public struct WireMessageTool: Codable, Equatable, Sendable {
+    public var callID: String? = nil
     public var name: String
     public var detail: String?
     public var success: Bool
     public var pending: Bool
+    enum CodingKeys: String, CodingKey {
+        case name, detail, success, pending
+        case callID = "call_id"
+    }
 }
 
 public struct WireHistoryPage: Codable, Equatable, Sendable {

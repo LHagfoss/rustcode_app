@@ -56,7 +56,9 @@ struct SessionEndToEndTests {
     func attachDuringProviderlessToolKeepsOneNamedResult() async throws {
         let model = try FakeModelServer(chunkDelay: .milliseconds(5), jsonCommand: "sleep 2; printf remote-tool-identity")
         let port = try await model.start()
-        let gateway = try await GatewayIntegrationTests.Gateway(configFile: configFile(modelPort: port))
+        // A profile override avoids capability probing switching the fixture to native calls.
+        let config = configFile(modelPort: port).replacingOccurrences(of: "\nmodel = \"fake\"\n", with: "\nmodel = \"fake\"\ntool_protocol = \"json\"\n")
+        let gateway = try await GatewayIntegrationTests.Gateway(configFile: config)
         defer { gateway.stop(); model.stop() }
         let client = LiveRemoteClient(codec: WireCodec(), requestTimeout: .seconds(20))
         let credential = try await client.pair(.scanned(try gateway.pairingChallenge().payload), deviceName: "Tool identity test")
@@ -66,6 +68,11 @@ struct SessionEndToEndTests {
         #expect(try await client.submit("Run the command", to: session.ref, requestID: RequestID()).state == .applied)
         var approved = false
         for try await update in first.updates {
+            if update.changes.contains(where: { if case .turnFinished = $0 { return true }; return false }) {
+                Issue.record("Fixture turn ended before its expected tool approval")
+                await client.disconnect()
+                return
+            }
             if let approval = update.changes.compactMap({ change -> PendingApproval? in
                 if case .approvalChanged(let approval) = change { return approval }; return nil
             }).first {
@@ -112,7 +119,9 @@ struct SessionEndToEndTests {
         #expect(folders.directories.contains { $0.name == "Project with spaces" })
         let createID = RequestID()
         let session = try await client.createSession(directory: workspace.path, requestID: createID)
-        #expect(session.workspace == workspace.resolvingSymlinksInPath().path)
+        let actualDirectory = try FileManager.default.attributesOfItem(atPath: session.workspace)[.systemFileNumber] as? NSNumber
+        let expectedDirectory = try FileManager.default.attributesOfItem(atPath: workspace.path)[.systemFileNumber] as? NSNumber
+        #expect(actualDirectory == expectedDirectory)
         #expect(session.turnCount == 0)
         let repeated = try await client.createSession(directory: workspace.path, requestID: createID)
         #expect(repeated.ref == session.ref)

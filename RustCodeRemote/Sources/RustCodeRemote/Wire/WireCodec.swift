@@ -527,7 +527,8 @@ public struct WireCodec: RemoteCodec {
                 summary: tool.detail ?? "",
                 output: text.isEmpty ? nil : text,
                 status: tool.pending ? .running : tool.success ? .succeeded : .failed,
-                isOutputTruncated: message.content.truncated
+                isOutputTruncated: message.content.truncated,
+                callID: tool.callID, isTranscriptRecord: true
             )))
         }
         switch message.role {
@@ -559,7 +560,7 @@ public struct WireCodec: RemoteCodec {
         return TranscriptItem(id: toolItemID(tool.id), .tool(ToolCall(
             name: tool.name,
             summary: tool.detail ?? "",
-            status: status
+            status: status, callID: tool.id
         )))
     }
 

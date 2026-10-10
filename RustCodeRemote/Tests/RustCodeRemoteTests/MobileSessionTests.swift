@@ -61,6 +61,37 @@ import Testing
 }
 
 @Suite struct MobileToolIdentityTests {
+    @Test func lateEventsDoNotDuplicateOrRewriteDurableSameArgumentCalls() {
+        let session = SessionRef(sessionID: "s", registrationEpoch: 1)
+        let timing = TurnTiming(turnID: "current")
+        func record(_ id: String, _ output: String) -> TranscriptItem {
+            TranscriptItem(id: id, .tool(ToolCall(name: "run_command", summary: "pwd", output: output, status: .succeeded, callID: "local_hash", isTranscriptRecord: true)), turn: timing, timestamp: "saved-time")
+        }
+        let records = [record("m2", "before edit"), record("m5", "after edit")]
+        var snapshot = SessionSnapshot(session: session, items: records, activeTurnID: "current")
+        let start = TranscriptItem(id: "tool:local_hash", .tool(ToolCall(name: "run_command", summary: "pwd", status: .running, callID: "local_hash")))
+        _ = snapshot.apply(.init(session: session, sequence: 1, event: .itemAppended(start)))
+        _ = snapshot.apply(.init(session: session, sequence: 2, event: .toolFinished(itemID: start.id, succeeded: true, isPending: false, output: "late clipped preview", isOutputTruncated: true)))
+        #expect(snapshot.items == records)
+        // A new turn can run the same arguments; the previous turn cannot suppress it.
+        _ = snapshot.apply(.init(session: session, sequence: 3, event: .turnStarted(turnID: "next")))
+        _ = snapshot.apply(.init(session: session, sequence: 4, event: .itemAppended(start)))
+        _ = snapshot.apply(.init(session: session, sequence: 5, event: .toolFinished(itemID: start.id, succeeded: true, isPending: false, output: "new turn output", isOutputTruncated: false)))
+        #expect(snapshot.items.count == 3)
+        #expect(Array(snapshot.items.prefix(2)) == records)
+        guard case .tool(let latest) = snapshot.items.last?.content else { Issue.record("Missing new turn result"); return }
+        #expect(latest.output == "new turn output")
+    }
+
+    @Test func durableWireToolKeepsCorrelationWithoutChangingTranscriptIdentity() throws {
+        let raw = #"{"message_id":"m2","role":"tool","content":{"text":"result","truncated":false,"offset":0,"total_bytes":6},"tool":{"name":"run_command","call_id":"local_hash","success":true,"pending":false},"turn":{"turn_id":"current"}}"#
+        let item = WireCodec.item(try JSONDecoder().decode(WireMessage.self, from: Data(raw.utf8)))
+        #expect(item.id == "m2")
+        guard case .tool(let tool) = item.content else { Issue.record("Missing tool"); return }
+        #expect(tool.callID == "local_hash")
+        #expect(tool.isTranscriptRecord)
+    }
+
     @Test func lateToolStartAndResultUpsertOneNamedRowAndRetainDistinctCalls() {
         let session = SessionRef(sessionID: "tools", registrationEpoch: 1)
         var snapshot = SessionSnapshot(session: session)
