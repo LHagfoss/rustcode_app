@@ -6,6 +6,14 @@ struct ModelPicker: View {
     @Environment(RemoteStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
+    @ScaledMetric(relativeTo: .body) private var estimatedRowHeight: CGFloat = 56
+
+    private var contentHeight: CGFloat {
+        // Use the full catalog count so typing a search does not move the popover.
+        let count = max(store.attached?.settings?.models.count ?? 0, 1)
+        let busyCaption: CGFloat = store.attached?.settings?.canChange == false ? 32 : 0
+        return min(360, 104 + estimatedRowHeight * CGFloat(count) + busyCaption)
+    }
 
     private var choices: [SessionModelChoice] {
         let models = store.attached?.settings?.models ?? []
@@ -76,6 +84,6 @@ struct ModelPicker: View {
             .scrollDismissesKeyboard(.interactively)
             .accessibilityIdentifier("modelChoices")
         }
-        .frame(width: 320, height: 360)
+        .frame(width: 320, height: contentHeight)
     }
 }
