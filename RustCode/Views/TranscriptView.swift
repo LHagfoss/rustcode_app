@@ -48,10 +48,10 @@ struct TranscriptView: View {
             }
         }
         .sheet(isPresented: $showsRequests) { RequestStatusSheet() }
-        .alert("Restart the remote gateway", isPresented: $showsHostUpdate) {
+        .alert("Update RustCode on your Mac", isPresented: $showsHostUpdate) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text("This connection isn’t providing model or effort controls. Update RustCode and restart its remote gateway on your Mac, then reconnect. A gateway left running from before an update can hide new controls.")
+            Text("This host isn’t providing model or effort controls. Update RustCode on your Mac and reopen its session. Current versions update the background service automatically.")
         }
         .sheet(item: $selectable) { selectable in
             SelectTextSheet(text: selectable.text)
