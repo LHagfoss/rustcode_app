@@ -355,7 +355,7 @@ final class InputAndTranscriptTests: XCTestCase {
         XCTAssertTrue(other.waitForExistence(timeout: 3))
         other.tap()
         XCTAssertTrue(close.waitForNonExistence(timeout: 3))
-        XCTAssertTrue(app.buttons["Answer"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label ENDSWITH %@", "Answer")).firstMatch.waitForExistence(timeout: 5))
         XCTAssertTrue(show.exists)
         let otherComposer = app.textFields["Message to queue"].exists ? app.textFields["Message to queue"] : app.textViews["Message to queue"]
         XCTAssertNotEqual(otherComposer.value as? String, "Keep my sidebar draft")
@@ -382,6 +382,28 @@ final class InputAndTranscriptTests: XCTestCase {
         XCTAssertEqual(composer(in: app).value as? String, "/")
         XCTAssertTrue(app.scrollViews["commandSuggestions"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
+    }
+
+    func testSidebarEdgeSwipeOpensAndClosingSwipePreservesDraft() {
+        let app = launchChat(draft: "Keep my swipe draft")
+        let edge = app.coordinate(withNormalizedOffset: CGVector(dx: 0.015, dy: 0.5))
+        let open = app.coordinate(withNormalizedOffset: CGVector(dx: 0.78, dy: 0.5))
+        edge.press(forDuration: 0.05, thenDragTo: open)
+        let close = app.navigationBars["Sessions"].buttons["Close sessions"]
+        XCTAssertTrue(close.waitForExistence(timeout: 4))
+        XCTAssertTrue(close.isHittable)
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 3))
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Interactive sidebar and charcoal chat surface"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        let from = app.coordinate(withNormalizedOffset: CGVector(dx: 0.75, dy: 0.65))
+        let to = app.coordinate(withNormalizedOffset: CGVector(dx: 0.03, dy: 0.65))
+        from.press(forDuration: 0.05, thenDragTo: to)
+        XCTAssertTrue(app.buttons["Model and effort"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.buttons["Model and effort"].isHittable)
+        XCTAssertFalse(close.isHittable)
+        XCTAssertEqual(composer(in: app).value as? String, "Keep my swipe draft")
     }
 
     func testImagePickerCancellationPreservesMessageDraft() {
