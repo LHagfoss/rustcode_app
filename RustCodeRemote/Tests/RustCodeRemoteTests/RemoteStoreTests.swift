@@ -597,6 +597,30 @@ private final class DelayLog: Sendable {
         #expect(await client.submitCalls.isEmpty)
     }
 
+    @Test func controlsRequireHostMetadataAndUseAuthoritativeSnapshotUpdates() async {
+        let legacy = makeStore(StubClient())
+        legacy.bootstrap()
+        #expect(await waitUntil { legacy.connection == .connected })
+        legacy.select("s1")
+        #expect(await waitUntil { legacy.attached != nil })
+        #expect(await legacy.setSessionSettings(model: "invented", reasoningEffort: "high") == false)
+
+        let store = makeStore(StubClient())
+        await store.startDemo(deviceName: "Phone")
+        #expect(await waitUntil { store.sessions.count == 3 })
+        store.select(DemoRemoteClient.idleSessionID)
+        #expect(await waitUntil { store.attached?.settings != nil })
+        let total = store.selectedSession?.turnCount
+        #expect(total != nil)
+        await store.loadEarlierHistory()
+        #expect(store.selectedSession?.turnCount == total)
+        #expect(await store.setSessionSettings(model: "demo-fast", reasoningEffort: "high") == false)
+        #expect(await store.setSessionSettings(model: "demo-fast", reasoningEffort: "default"))
+        #expect(await waitUntil { store.attached?.settings?.selectedModel == "demo-fast" })
+        #expect(store.attached?.settings?.reasoningEffort == "default")
+        #expect(store.visibleRequests.isEmpty)
+    }
+
     // MARK: Demo host
 
     @Test func demoListsItsSessionsWithoutTouchingTheCredentialStore() async {
