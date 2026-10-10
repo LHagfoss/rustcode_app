@@ -274,7 +274,8 @@ public struct WireCodec: RemoteCodec {
             }
             return .failure(remoteError(error))
         case .directories(let listing): return .directories(listing)
-        case .sessionCreated(let created): return .sessionCreated(summary(created.session))
+        case .sessionCreated(let created):
+            return receipt == .applied ? .sessionCreated(summary(created.session)) : .receipt(receipt == .received ? .received : .unknown)
         case .sessions(let sessions):
             return .sessions(sessions.sessions.map(summary))
         case .attached(let attached):

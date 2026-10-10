@@ -45,7 +45,7 @@ public actor DemoRemoteClient: RemoteClient {
             session.state.commands = Self.commandCatalog
             session.state.capabilities = ["cancel_question", "execute_command"]
             session.state.settings = SessionSettings(models: [
-                .init(id: "demo-balanced", model: "demo-model", reasoningEfforts: ["default", "medium", "high"]),
+                .init(id: "demo-balanced", model: "demo-model", reasoningEfforts: ["default", "low", "medium", "high"]),
                 .init(id: "demo-fast", model: "demo-fast-model", reasoningEfforts: ["default"])
             ], selectedModel: "demo-balanced", reasoningEffort: "default", canChange: !session.state.isRunning)
             // The demo owns its complete transcript, including the older history page.

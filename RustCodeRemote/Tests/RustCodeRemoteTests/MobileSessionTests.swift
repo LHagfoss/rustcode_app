@@ -3,6 +3,13 @@ import Testing
 @testable import RustCodeRemote
 
 @Suite struct MobileSessionTests {
+    @Test func catalogKeepsInsertionAndFutureActionWithoutGuessingSupport() throws {
+        let raw = #"{"name":"/future","description":"Host-only command","insertion":"/future ","action":"future_action"}"#
+        let choice = try JSONDecoder().decode(SessionCommandChoice.self, from: Data(raw.utf8))
+        #expect(choice.insertion == "/future ")
+        #expect(choice.action == "future_action")
+    }
+
     @Test func gatewayOperationsDoNotTargetAnExistingSession() throws {
         for command in [RemoteCommand.listDirectories(path: nil), .createSession(path: "/Users/me/Project with spaces")] {
             let raw = try WireCodec().encode(command, requestID: RequestID("new-session"))
@@ -39,5 +46,26 @@ import Testing
         #expect(snapshot.session == created.ref)
         #expect(created.turnCount == 0)
         await client.disconnect()
+    }
+}
+
+@Suite struct MobileToolIdentityTests {
+    @Test func lateToolStartAndResultUpsertOneNamedRowAndRetainDistinctCalls() {
+        let session = SessionRef(sessionID: "tools", registrationEpoch: 1)
+        var snapshot = SessionSnapshot(session: session)
+        let first = TranscriptItem(id: "tool:call-1", .tool(ToolCall(name: "run_command", summary: "pwd", status: .running)))
+        _ = snapshot.apply(.init(session: session, sequence: 1, event: .itemAppended(first)))
+        _ = snapshot.apply(.init(session: session, sequence: 2, event: .toolFinished(itemID: first.id, succeeded: true, isPending: false, output: "same output", isOutputTruncated: false)))
+        // A repeated named start repairs a missing live start after late attachment.
+        let second = TranscriptItem(id: "tool:call-2", .tool(ToolCall(name: "run_command", summary: "pwd", status: .running)))
+        _ = snapshot.apply(.init(session: session, sequence: 3, event: .itemAppended(second)))
+        _ = snapshot.apply(.init(session: session, sequence: 4, event: .itemAppended(second)))
+        _ = snapshot.apply(.init(session: session, sequence: 5, event: .toolFinished(itemID: second.id, succeeded: true, isPending: false, output: "same output", isOutputTruncated: false)))
+        #expect(snapshot.items.count == 2)
+        for item in snapshot.items {
+            guard case .tool(let tool) = item.content else { Issue.record("Missing tool"); continue }
+            #expect(tool.name == "run_command")
+            #expect(tool.output == "same output")
+        }
     }
 }
