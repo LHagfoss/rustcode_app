@@ -95,7 +95,7 @@ struct ComposerBar<Accessory: View, Controls: View>: View {
         .contentShape(shape)
         .glassSurface(in: shape)
         .sensoryFeedback(.impact(weight: .light), trigger: sendCount)
-        .sensoryFeedback(.stop, trigger: stopCount)
+        .sensoryFeedback(.impact(weight: .medium, intensity: 0.8), trigger: stopCount)
         .sensoryFeedback(.selection, trigger: showsActions)
         .sensoryFeedback(.success, trigger: images.count) { old, new in new > old }
         .sheet(isPresented: $showsFolder) { NewSessionView() }

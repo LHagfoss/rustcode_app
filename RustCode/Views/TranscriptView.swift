@@ -73,9 +73,9 @@ struct TranscriptView: View {
             guard scenePhase == .active, !isChatObscured, store.connection == .connected,
                   let feedback, feedback.session == store.attached?.session else { return nil }
             switch feedback.kind {
-            case .started: return .start
+            case .started: return .impact(weight: .light, intensity: 0.6)
             case .completed: return .success
-            case .cancelled: return .stop
+            case .cancelled: return .impact(weight: .medium, intensity: 0.8)
             case .failed: return .error
             case .attention: return .warning
             }
