@@ -28,6 +28,14 @@ private actor StubClient: RemoteClient {
         return stream
     }
     func emit(_ receipt: RequestReceipt) { receiptContinuation?.yield(receipt) }
+    private(set) var settingsCalls = 0
+    func setSessionSettings(model: String, reasoningEffort: String, in session: SessionRef, requestID: RequestID) async throws -> RequestReceipt {
+        settingsCalls += 1
+        return RequestReceipt(requestID: requestID, state: .unknown)
+    }
+    func publishSnapshot(_ snapshot: SessionSnapshot) {
+        updates?.yield(SessionUpdate(session: snapshot.session, sequence: snapshot.sequence, event: .replaced(snapshot)))
+    }
     private(set) var queueTexts: [String] = []
     private(set) var cancelCalls: [RequestID] = []
     private(set) var submitCalls: [RequestID] = []
@@ -760,6 +768,26 @@ private final class DelayLog: Sendable {
         }
         #expect(users.suffix(2) == ["first", "second"])
         #expect(store.attached?.items.contains { $0.content == .notice("Queued: second") } == true)
+    }
+
+    @Test func confirmedSettingsSnapshotReleasesGuardWithoutInventingReceiptSuccess() async {
+        let client = StubClient()
+        let settings = SessionSettings(models: [.init(id: "m", model: "m", reasoningEfforts: ["low", "high"])], selectedModel: "m", reasoningEffort: "low", canChange: true)
+        var snapshot = SessionSnapshot(session: makeSession("s1").ref, settings: settings)
+        await client.set(snapshot: snapshot)
+        let store = makeStore(client)
+        store.bootstrap()
+        #expect(await waitUntil { store.connection == .connected })
+        store.select("s1")
+        #expect(await waitUntil { store.attached != nil })
+        #expect(await store.setSessionSettings(model: "m", reasoningEffort: "high"))
+        #expect(await store.setSessionSettings(model: "m", reasoningEffort: "low") == false)
+        snapshot.settings?.reasoningEffort = "high"
+        await client.publishSnapshot(snapshot)
+        #expect(await waitUntil { store.attached?.settings?.reasoningEffort == "high" })
+        #expect(store.visibleRequests.first?.phase == .settled(.unknown))
+        #expect(await store.setSessionSettings(model: "m", reasoningEffort: "low"))
+        #expect(await client.settingsCalls == 2)
     }
 
     @Test func finalRejectionArrivingBeforeMutationTimeoutRestoresDraft() async {

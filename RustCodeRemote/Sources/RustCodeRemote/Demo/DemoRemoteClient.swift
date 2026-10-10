@@ -230,8 +230,11 @@ public actor DemoRemoteClient: RemoteClient {
         try once(requestID, in: session) { current in
             guard current.state.pendingQuestion?.id == questionID else { return .rejected(.staleQuestion) }
             emit(session.sessionID, .questionChanged(nil))
+            current.turnTask?.cancel()
+            sessions[session.sessionID]?.turnTask = nil
+            sessions[session.sessionID]?.queued.removeAll()
+            emit(session.sessionID, .turnFinished(turnID: current.state.activeTurnID, outcome: .cancelled))
             publishSummaries()
-            startTask(in: session.sessionID) { await $0.runAfterAnswer("Question cancelled", in: session.sessionID) }
             return .applied
         }
     }

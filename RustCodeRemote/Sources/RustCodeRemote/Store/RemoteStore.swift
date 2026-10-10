@@ -60,6 +60,9 @@ public final class RemoteStore {
     private struct PendingMutation {
         var session: SessionRef
         var key: String
+        var blocksDuplicate = true
+        var desiredModel: String?
+        var desiredEffort: String?
     }
     private var pendingMutations: [RequestID: PendingMutation] = [:]
     @ObservationIgnored private var performing: Set<RequestID> = []
@@ -77,7 +80,7 @@ public final class RemoteStore {
     }
 
     private func isPending(_ key: String, in session: SessionRef) -> Bool {
-        pendingMutations.values.contains { $0.session == session && $0.key == key }
+        pendingMutations.values.contains { $0.session == session && $0.key == key && $0.blocksDuplicate }
     }
 
     @ObservationIgnored private let liveClient: any RemoteClient
@@ -378,7 +381,7 @@ public final class RemoteStore {
               let settings = snapshot.settings, settings.canChange,
               let choice = settings.models.first(where: { $0.id == model }),
               choice.reasoningEfforts.contains(reasoningEffort) else { return false }
-        return await perform(.settings, in: snapshot.session, key: "settings") { client, id in
+        return await perform(.settings, in: snapshot.session, key: "settings", desiredModel: model, desiredEffort: reasoningEffort) { client, id in
             try await client.setSessionSettings(model: model, reasoningEffort: reasoningEffort, in: snapshot.session, requestID: id)
         }
     }
@@ -613,6 +616,7 @@ public final class RemoteStore {
                 switch attachment.start {
                 case .snapshot(let snapshot):
                     attached = snapshot
+                    retireObservedMutations()
                     snapshotInstanceID = currentInstanceID
                 case .resumed:
                     guard attached?.session == ref else {
@@ -628,6 +632,7 @@ public final class RemoteStore {
                         lostUpdates = true
                         break
                     }
+                    retireObservedMutations()
                 }
                 // The stream ending without a gap means the connection went; the connection
                 // loop attaches again once it is back.
@@ -655,6 +660,8 @@ public final class RemoteStore {
         _ kind: TrackedRequest.Kind,
         in session: SessionRef,
         key: String? = nil,
+        desiredModel: String? = nil,
+        desiredEffort: String? = nil,
         _ operation: (any RemoteClient, RequestID) async throws -> RequestReceipt
     ) async -> Bool {
         guard connection == .connected else {
@@ -666,7 +673,7 @@ public final class RemoteStore {
         // One ID for the life of the request, so the host can deduplicate it and its
         // outcome can still be looked up after a disconnect.
         let id = RequestID()
-        pendingMutations[id] = PendingMutation(session: session, key: key)
+        pendingMutations[id] = PendingMutation(session: session, key: key, desiredModel: desiredModel, desiredEffort: desiredEffort)
         performing.insert(id)
         defer { finalReceipts[id] = nil; performing.remove(id) }
         receipts.begin(TrackedRequest(id: id, session: session, kind: kind))
@@ -686,6 +693,21 @@ public final class RemoteStore {
             receipts.markUncertain(id)
             reconcileLater(id)
             return true
+        }
+    }
+
+    /// An authoritative snapshot can show that a target no longer exists or that settings
+    /// match. This releases the duplicate guard without claiming to know the request receipt.
+    private func retireObservedMutations() {
+        guard let snapshot = attached else { return }
+        for (id, pending) in pendingMutations where pending.session == snapshot.session {
+            let key = pending.key
+            let retired = (key.hasPrefix("cancel:") && key != "cancel:\(snapshot.activeTurnID ?? "")")
+                || (key.hasPrefix("question:") && key != "question:\(snapshot.pendingQuestion?.id ?? "")")
+                || (key.hasPrefix("approval:") && key != "approval:\(snapshot.pendingApproval?.batchID ?? "")")
+                || (key == "settings" && snapshot.settings?.selectedModel == pending.desiredModel
+                    && snapshot.settings?.reasoningEffort == pending.desiredEffort)
+            if retired { pendingMutations[id]?.blocksDuplicate = false }
         }
     }
 

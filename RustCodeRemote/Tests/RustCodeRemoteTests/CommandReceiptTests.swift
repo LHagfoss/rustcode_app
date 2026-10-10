@@ -24,6 +24,20 @@ import Testing
         #expect(try codec.decode(direct.replacingOccurrences(of: "applied", with: "unknown")) == .reply(requestID: RequestID("r"), .receipt(.unknown)))
     }
 
+    @Test func demoQuestionCancellationStopsChainAndAllowsNewTurn() async throws {
+        let client = DemoRemoteClient(pace: .zero, includeQuestionChain: true)
+        let credential = try await client.pair(.scanned("demo"), deviceName: "Test")
+        try await client.connect(using: credential)
+        let session = SessionRef(sessionID: DemoRemoteClient.questionsSessionID, registrationEpoch: 1)
+        #expect(try await client.cancelQuestion("question-demo-1", in: session, requestID: RequestID()).state == .applied)
+        let attachment = try await client.attach(session, resumeAfter: nil)
+        guard case .snapshot(let state) = attachment.start else { Issue.record("missing snapshot"); return }
+        #expect(!state.isRunning)
+        #expect(state.pendingQuestion == nil)
+        #expect(try await client.submit("Continue", to: session, requestID: RequestID()).state == .applied)
+        await client.disconnect()
+    }
+
     @Test func demoThreeQuestionsAdvanceWithoutEndingTheTurnBetweenAnswers() async throws {
         let client = DemoRemoteClient(pace: .zero, includeQuestionChain: true)
         let credential = try await client.pair(.scanned("demo"), deviceName: "Test")
