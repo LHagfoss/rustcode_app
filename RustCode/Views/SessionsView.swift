@@ -57,7 +57,7 @@ struct SessionsView: View {
                         NavigationStack {
                             chat
                                 .background(colorScheme == .dark ? Color(white: 0.07) : Color(uiColor: .systemBackground))
-                                .disabled(obscured)
+                                .disabled(showsSidebar)
                                 .accessibilityHidden(obscured)
                                 .environment(\.isChatObscured, obscured)
                         }
@@ -154,7 +154,7 @@ struct SessionsView: View {
             .onEnded { value in
                 defer { dismissedKeyboardForDrag = false }
                 guard !opening || value.startLocation.x <= 24 else { return }
-                guard drawerDrag.horizontal == true else { return }
+                guard abs(value.translation.width) > abs(value.translation.height) * 1.3 else { return }
                 let predicted = (opening ? 0 : width) + value.predictedEndTranslation.width
                 withAnimation(reduceMotion ? nil : .snappy(duration: 0.25)) {
                     showsSidebar = predicted > width * 0.5
