@@ -31,7 +31,7 @@ struct ModelPicker: View {
                             }
                         }
                         .disabled(!canChange)
-                        .accessibilityLabel("Thinking effort")
+                        .accessibilityIdentifier("thinkingEffortPicker")
                         .accessibilityValue(settings.reasoningEffort)
                     } footer: {
                         if !settings.canChange { Text("Model and effort can change after the current turn stops.") }

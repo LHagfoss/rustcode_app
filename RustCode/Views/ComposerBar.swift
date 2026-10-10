@@ -333,6 +333,9 @@ struct ComposerBar<Accessory: View, Controls: View>: View {
         }
         let outgoingImages = images
         isFocused = false
+        // Commit UIKit's resignation before disabling the field; otherwise SwiftUI can
+        // reattach its editor as the turn changes from Message to Queue a message.
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         isSending = true
         sendCount += 1
         Task {
@@ -342,6 +345,9 @@ struct ComposerBar<Accessory: View, Controls: View>: View {
                 ? await runCommand(message)
                 : await store.send(message, images: outgoingImages, mode: mode)
             if accepted {
+                if store.selectedSessionID == sessionID && !isFocused {
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                }
                 drafts.clearIfMatching(text: message, images: outgoingImages, sessionID: sessionID)
             }
         }
