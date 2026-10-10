@@ -28,16 +28,19 @@ struct ModelPicker: View {
                 Spacer()
                 Button("Done") { dismiss() }
                     .font(.subheadline.weight(.semibold))
+                    .frame(minWidth: 44, minHeight: 44)
             }
             .padding(.horizontal, 16).frame(height: 44)
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
                 TextField("Search models", text: $query)
+                    .font(.body)
+                    .frame(maxWidth: .infinity, minHeight: 44)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .accessibilityLabel("Search models")
             }
-            .padding(.horizontal, 12).frame(height: 40)
+            .padding(.horizontal, 12).frame(height: 44)
             .background(.fill.quaternary, in: .rect(cornerRadius: 10))
             .padding(.horizontal, 12).padding(.bottom, 8)
             if store.attached?.settings?.canChange == false {
