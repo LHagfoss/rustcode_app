@@ -53,6 +53,50 @@ struct SessionEndToEndTests {
     }
 
     @Test(.timeLimit(.minutes(2)))
+    func uploadedImageReachesProviderAsRealImageAndReplayDoesNotDuplicateBytes() async throws {
+        let model = try FakeModelServer(chunkDelay: .milliseconds(5))
+        let port = try await model.start()
+        let config = configFile(modelPort: port).replacingOccurrences(of: "supports_vision = false", with: "supports_vision = true")
+        let gateway = try await GatewayIntegrationTests.Gateway(configFile: config)
+        defer { gateway.stop(); model.stop() }
+        let client = LiveRemoteClient(codec: WireCodec(), requestTimeout: .seconds(20))
+        let credential = try await client.pair(.scanned(try gateway.pairingChallenge().payload), deviceName: "Image test")
+        try await client.connect(using: credential)
+        let session = try await client.createSession(directory: gateway.configuration.path, requestID: RequestID())
+        let attachment = try await client.attach(session.ref, resumeAfter: nil)
+        guard case .snapshot(var state) = attachment.start else { Issue.record("Missing image session"); return }
+        #expect(state.capabilities.contains("upload_image"))
+        let png = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")!
+        let imageID = UUID().uuidString.lowercased()
+        let firstID = RequestID()
+        let first = ImageUploadChunk(attachmentID: imageID, mimeType: "image/png", offset: 0, totalBytes: UInt64(png.count), dataBase64: png.prefix(20).base64EncodedString())
+        let partial = try await client.uploadImage(first, in: session.ref, requestID: firstID)
+        #expect(partial.nextOffset == 20)
+        #expect(!partial.complete)
+        let lastID = RequestID()
+        let last = ImageUploadChunk(attachmentID: imageID, mimeType: "image/png", offset: 20, totalBytes: UInt64(png.count), dataBase64: png.dropFirst(20).base64EncodedString())
+        let complete = try await client.uploadImage(last, in: session.ref, requestID: lastID)
+        #expect(complete.complete)
+        #expect(try await client.uploadImage(first, in: session.ref, requestID: firstID) == partial)
+        #expect(try await client.uploadImage(last, in: session.ref, requestID: lastID) == complete)
+        let reference = try #require(complete.promptReference)
+        #expect(try await client.submit("Describe this image\n\n" + reference, to: session.ref, requestID: RequestID()).state == .applied)
+        for try await update in attachment.updates {
+            _ = state.apply(update)
+            if state.lastTurn?.outcome == "completed" { break }
+        }
+        let requests = model.requestBodies.compactMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) as? [String: Any] }
+        let urls = requests.flatMap { ($0["messages"] as? [[String: Any]] ?? []).flatMap { message in
+            (message["content"] as? [[String: Any]] ?? []).compactMap { part in
+                (part["image_url"] as? [String: Any])?["url"] as? String
+            }
+        } }
+        #expect(urls.contains { $0.hasPrefix("data:image/") && $0.contains(";base64,") })
+        #expect(state.lastTurn?.outcome == "completed")
+        await client.disconnect()
+    }
+
+    @Test(.timeLimit(.minutes(2)))
     func attachDuringProviderlessToolKeepsOneNamedResult() async throws {
         let model = try FakeModelServer(chunkDelay: .milliseconds(5), jsonCommand: "sleep 2; printf remote-tool-identity")
         let port = try await model.start()
