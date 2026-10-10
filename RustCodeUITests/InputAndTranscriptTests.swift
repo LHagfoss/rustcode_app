@@ -199,13 +199,13 @@ final class InputAndTranscriptTests: XCTestCase {
         XCTAssertTrue(model.waitForExistence(timeout: 5))
         model.tap()
         XCTAssertTrue(app.navigationBars["Model & Effort"].waitForExistence(timeout: 3))
-        app.buttons["Thinking effort"].tap()
+        app.buttons["thinkingEffortPicker"].tap()
         app.buttons["High"].tap()
         XCTAssertTrue(app.navigationBars["Model & Effort"].exists)
         app.navigationBars["Model & Effort"].buttons["Done"].tap()
         XCTAssertEqual(model.value as? String, "demo-model, high")
         model.tap()
-        let search = app.textFields["Search models"]
+        let search = app.searchFields["Search models"]
         search.tap()
         search.typeText("fast")
         app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "demo-fast-model")).firstMatch.tap()
@@ -274,7 +274,7 @@ final class InputAndTranscriptTests: XCTestCase {
 
     func testSlashAutocompleteCompletesInputAndListScrollsWithinBounds() {
         let app = launchChat(draft: "/he")
-        let complete = app.buttons["Complete command"]
+        let complete = app.buttons["/help"]
         XCTAssertTrue(complete.waitForExistence(timeout: 5))
         complete.tap()
         XCTAssertEqual(composer(in: app).value as? String, "/help")
@@ -297,10 +297,10 @@ final class InputAndTranscriptTests: XCTestCase {
     func testSlashModelOpensSearchableNativeSheet() {
         let app = launchChat(draft: "/model")
         app.buttons["Run command"].tap()
-        let search = app.textFields["Search models"]
+        let search = app.searchFields["Search models"]
         XCTAssertTrue(search.waitForExistence(timeout: 5))
         XCTAssertTrue(app.navigationBars["Model & Effort"].exists)
-        XCTAssertTrue(app.buttons["Thinking effort"].exists)
+        XCTAssertTrue(app.buttons["thinkingEffortPicker"].exists)
         let screenshot = XCTAttachment(screenshot: app.screenshot())
         screenshot.name = "Native combined model and effort sheet"
         screenshot.lifetime = .keepAlways
@@ -340,7 +340,7 @@ final class InputAndTranscriptTests: XCTestCase {
         let show = app.buttons["Show sessions"]
         XCTAssertTrue(show.waitForExistence(timeout: 5))
         show.tap()
-        let close = app.buttons["Close sessions"]
+        let close = app.navigationBars["Sessions"].buttons["Close sessions"]
         XCTAssertTrue(close.waitForExistence(timeout: 3))
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 3))
         let screenshot = XCTAttachment(screenshot: app.screenshot())
@@ -357,13 +357,19 @@ final class InputAndTranscriptTests: XCTestCase {
         XCTAssertTrue(close.waitForNonExistence(timeout: 3))
         XCTAssertTrue(app.buttons["Answer"].waitForExistence(timeout: 5))
         XCTAssertTrue(show.exists)
+        let otherComposer = app.textFields["Message to queue"].exists ? app.textFields["Message to queue"] : app.textViews["Message to queue"]
+        XCTAssertNotEqual(otherComposer.value as? String, "Keep my sidebar draft")
+        show.tap()
+        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Draft release notes")).firstMatch.tap()
+        XCTAssertTrue(composer(in: app).waitForExistence(timeout: 5))
+        XCTAssertEqual(composer(in: app).value as? String, "Keep my sidebar draft")
     }
 
     func testMinimalComposerActionsPreserveDraftAndOfferSlashCommands() {
         let app = launchChat(draft: "Keep my actions draft")
         XCTAssertTrue(app.buttons["Model and effort"].exists)
         XCTAssertTrue(app.buttons["Send message"].exists)
-        XCTAssertFalse(app.buttons["Thinking effort"].exists)
+        XCTAssertFalse(app.buttons["thinkingEffortPicker"].exists)
         app.buttons["Chat actions"].tap()
         app.buttons["Slash Commands"].tap()
         XCTAssertEqual(composer(in: app).value as? String, "Keep my actions draft")
@@ -376,6 +382,23 @@ final class InputAndTranscriptTests: XCTestCase {
         XCTAssertEqual(composer(in: app).value as? String, "/")
         XCTAssertTrue(app.scrollViews["commandSuggestions"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
+    }
+
+    func testImagePickerCancellationPreservesMessageDraft() {
+        let app = launchChat(draft: "Keep my image draft")
+        app.buttons["Chat actions"].tap()
+        XCTAssertTrue(app.navigationBars["Chat Actions"].waitForExistence(timeout: 3))
+        app.buttons["Add Image"].tap()
+        let close = app.buttons.matching(NSPredicate(format: "label IN %@", ["Cancel", "Close"])).firstMatch
+        XCTAssertTrue(close.waitForExistence(timeout: 5))
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Native image picker"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        close.tap()
+        XCTAssertTrue(close.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(composer(in: app).value as? String, "Keep my image draft")
+        XCTAssertTrue(app.buttons["Model and effort"].exists)
     }
 
     private func launchChat(draft: String) -> XCUIApplication {
