@@ -53,6 +53,51 @@ struct SessionEndToEndTests {
     }
 
     @Test(.timeLimit(.minutes(2)))
+    func phoneCreatesPersistentSessionInChosenFolderWithoutTerminal() async throws {
+        let model = try FakeModelServer(chunkDelay: .milliseconds(5))
+        let port = try await model.start()
+        let gateway = try await GatewayIntegrationTests.Gateway(configFile: configFile(modelPort: port))
+        defer { gateway.stop(); model.stop() }
+        let workspace = gateway.configuration.appendingPathComponent("Project with spaces")
+        try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
+        let client = LiveRemoteClient(codec: WireCodec(), requestTimeout: .seconds(20))
+        let credential = try await client.pair(.scanned(try gateway.pairingChallenge().payload), deviceName: "New session test")
+        try await client.connect(using: credential)
+        let home = try await client.browseDirectories(path: nil)
+        #expect(home.path == FileManager.default.homeDirectoryForCurrentUser.path)
+        let folders = try await client.browseDirectories(path: gateway.configuration.path)
+        #expect(folders.directories.contains { $0.name == "Project with spaces" })
+        let createID = RequestID()
+        let session = try await client.createSession(directory: workspace.path, requestID: createID)
+        #expect(session.workspace == workspace.resolvingSymlinksInPath().path)
+        #expect(session.turnCount == 0)
+        let repeated = try await client.createSession(directory: workspace.path, requestID: createID)
+        #expect(repeated.ref == session.ref)
+        let attachment = try await client.attach(session.ref, resumeAfter: nil)
+        guard case .snapshot(var snapshot) = attachment.start else { Issue.record("Missing created session snapshot"); return }
+        #expect(snapshot.commands.contains { $0.name == "/help" || $0.name == "help" })
+        let help = try await client.executeCommand("/help", in: session.ref, requestID: RequestID())
+        #expect(help.state == .applied)
+        #expect(help.commandResult?.output.isEmpty == false)
+        #expect(try await client.submit("Say hello", to: session.ref, requestID: RequestID()).state == .applied)
+        var completed = false
+        for try await update in attachment.updates {
+            _ = snapshot.apply(update)
+            if snapshot.lastTurn?.outcome == "completed" { completed = true; break }
+        }
+        #expect(completed)
+        await client.disconnect()
+        try await client.connect(using: credential)
+        var lists = try await client.subscribeSessions().makeAsyncIterator()
+        let surviving = try await list(&lists) { $0.contains { $0.id == session.id } }
+        #expect(surviving.first { $0.id == session.id }?.turnCount == 1)
+        let reconnect = try await client.attach(session.ref, resumeAfter: nil)
+        guard case .snapshot(let restored) = reconnect.start else { Issue.record("Missing reconnect snapshot"); return }
+        #expect(restored.items.contains { if case .assistant(let response) = $0.content { return response.text.contains("fake model") }; return false })
+        await client.disconnect()
+    }
+
+    @Test(.timeLimit(.minutes(2)))
     func questionBatchAnswersAndCancellationSettleBeforeAnotherTurnStarts() async throws {
         let model = try FakeModelServer(askQuestions: true)
         let modelPort = try await model.start()

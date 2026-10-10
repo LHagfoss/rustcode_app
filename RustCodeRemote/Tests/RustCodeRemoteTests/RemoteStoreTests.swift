@@ -5,6 +5,13 @@ import Testing
 
 /// A client whose behaviour each test scripts directly.
 private actor StubClient: RemoteClient {
+    private(set) var creationCalls: [RequestID] = []
+    var creationResults: [Result<SessionSummary, RemoteError>] = []
+    func set(creationResults: [Result<SessionSummary, RemoteError>]) { self.creationResults = creationResults }
+    func createSession(directory: String?, requestID: RequestID) async throws -> SessionSummary {
+        creationCalls.append(requestID)
+        return try creationResults.removeFirst().get()
+    }
     var connectResults: [Result<Void, RemoteError>] = []
     var submitResult: Result<ReceiptState, RemoteError> = .success(.applied)
     var answerResult: Result<ReceiptState, RemoteError> = .success(.applied)
@@ -209,6 +216,37 @@ private final class DelayLog: Sendable {
             sleep: { [delays] delay in delays.append(delay) },
             randomUnit: { 0.5 }
         )
+    }
+
+    @Test func uncertainCreationRetriesSameIdentityAndSelectsConfirmedSession() async {
+        let client = StubClient()
+        await client.set(creationResults: [.failure(.timeout), .success(makeSession("new"))])
+        let store = makeStore(client)
+        store.bootstrap()
+        #expect(await waitUntil { store.connection == .connected })
+        #expect(await store.createSession(directory: "/work") == false)
+        #expect(await store.createSession(directory: "/different") == false)
+        #expect(await client.creationCalls.count == 1)
+        #expect(await store.createSession(directory: "/work"))
+        let requests = await client.creationCalls
+        #expect(requests.count == 2)
+        #expect(requests[0] == requests[1])
+        #expect(store.selectedSessionID == "new")
+        #expect(await waitUntil { store.attached?.session.sessionID == "new" })
+        await store.unpair()
+    }
+
+    @Test func rejectedCreationAllowsChoosingAnotherFolder() async {
+        let client = StubClient()
+        await client.set(creationResults: [.failure(.rejected(.unsupportedOperation)), .success(makeSession("new"))])
+        let store = makeStore(client)
+        store.bootstrap()
+        #expect(await waitUntil { store.connection == .connected })
+        #expect(await store.createSession(directory: "/missing") == false)
+        #expect(await store.createSession(directory: "/exists"))
+        let requests = await client.creationCalls
+        #expect(requests[0] != requests[1])
+        await store.unpair()
     }
 
     // MARK: Pairing and connection
