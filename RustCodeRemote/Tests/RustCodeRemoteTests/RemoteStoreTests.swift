@@ -19,6 +19,17 @@ private actor StubClient: RemoteClient {
     private(set) var contentCalls: [UInt64] = []
 
     private(set) var connectCalls = 0
+    private var receiptContinuation: AsyncStream<RequestReceipt>.Continuation?
+    var immediateFinal: ReceiptState?
+    func set(immediateFinal: ReceiptState) { self.immediateFinal = immediateFinal }
+    func receiptUpdates() async -> AsyncStream<RequestReceipt> {
+        let (stream, continuation) = AsyncStream.makeStream(of: RequestReceipt.self)
+        receiptContinuation = continuation
+        return stream
+    }
+    func emit(_ receipt: RequestReceipt) { receiptContinuation?.yield(receipt) }
+    private(set) var queueTexts: [String] = []
+    private(set) var cancelCalls: [RequestID] = []
     private(set) var submitCalls: [RequestID] = []
     private(set) var statusCalls: [RequestID] = []
     private(set) var attachCalls: [UInt64?] = []
@@ -118,6 +129,11 @@ private actor StubClient: RemoteClient {
 
     func submit(_ text: String, to session: SessionRef, requestID: RequestID) async throws -> RequestReceipt {
         submitCalls.append(requestID)
+        if let immediateFinal {
+            receiptContinuation?.yield(RequestReceipt(requestID: requestID, state: immediateFinal))
+            try await Task.sleep(for: .milliseconds(15))
+            throw RemoteError.timeout
+        }
         return RequestReceipt(requestID: requestID, state: try submitResult.get())
     }
 
@@ -126,11 +142,13 @@ private actor StubClient: RemoteClient {
     }
 
     func queue(_ text: String, in session: SessionRef, requestID: RequestID) async throws -> RequestReceipt {
-        RequestReceipt(requestID: requestID, state: .applied)
+        queueTexts.append(text)
+        return RequestReceipt(requestID: requestID, state: .unknown)
     }
 
     func cancel(turnID: String, in session: SessionRef, requestID: RequestID) async throws -> RequestReceipt {
-        RequestReceipt(requestID: requestID, state: .applied)
+        cancelCalls.append(requestID)
+        return RequestReceipt(requestID: requestID, state: .unknown)
     }
 
     func answerQuestion(_ questionID: String, with answer: QuestionAnswer, in session: SessionRef, requestID: RequestID) async throws -> RequestReceipt {
@@ -742,6 +760,70 @@ private final class DelayLog: Sendable {
         }
         #expect(users.suffix(2) == ["first", "second"])
         #expect(store.attached?.items.contains { $0.content == .notice("Queued: second") } == true)
+    }
+
+    @Test func finalRejectionArrivingBeforeMutationTimeoutRestoresDraft() async {
+        let client = StubClient()
+        await client.set(immediateFinal: .rejected(.busy))
+        let store = makeStore(client)
+        store.bootstrap()
+        #expect(await waitUntil { store.connection == .connected })
+        store.select("s1")
+        #expect(await waitUntil { store.attached != nil })
+        #expect(await store.send("draft") == false)
+        #expect(store.visibleRequests.isEmpty)
+        #expect(store.notice == RemoteRejection.busy.message)
+    }
+
+    @Test func distinctQueuedMessagesRemainAllowedWhileDuplicateIsUncertain() async {
+        let client = StubClient()
+        await client.set(snapshot: SessionSnapshot(session: makeSession("s1").ref, activeTurnID: "turn-1"))
+        let store = makeStore(client)
+        store.bootstrap()
+        #expect(await waitUntil { store.connection == .connected })
+        store.select("s1")
+        #expect(await waitUntil { store.attached != nil })
+        #expect(await store.send("one"))
+        #expect(await store.send("one") == false)
+        #expect(await store.send("two"))
+        #expect(await client.queueTexts == ["one", "two"])
+    }
+
+    @Test func newQuestionIsNotBlockedByPreviousUnknownAnswer() async throws {
+        let client = StubClient()
+        let first = PendingQuestion(id: "q1", prompt: "First?", options: [], allowsFreeText: true)
+        let second = PendingQuestion(id: "q2", prompt: "Second?", options: [], allowsFreeText: true)
+        await client.set(snapshot: SessionSnapshot(session: makeSession("s1").ref, activeTurnID: "turn-1", pendingQuestion: first))
+        await client.set(answerResult: .success(.unknown))
+        let store = makeStore(client)
+        store.bootstrap()
+        #expect(await waitUntil { store.connection == .connected })
+        store.select("s1")
+        #expect(await waitUntil { store.attached != nil })
+        #expect(await store.answer(first, with: QuestionAnswer(text: "one")))
+        #expect(store.isQuestionPending(first.id))
+        #expect(!store.isQuestionPending(second.id))
+        #expect(await store.answer(second, with: QuestionAnswer(text: "two")))
+    }
+
+    @Test func uncertainCancellationCannotBeDuplicatedEvenAfterDismissal() async {
+        let client = StubClient()
+        await client.set(snapshot: SessionSnapshot(session: makeSession("s1").ref, activeTurnID: "turn-1"))
+        let store = makeStore(client)
+        store.bootstrap()
+        #expect(await waitUntil { store.connection == .connected })
+        store.select("s1")
+        #expect(await waitUntil { store.attached != nil })
+        await store.cancelTurn()
+        let request = store.visibleRequests.first!
+        store.dismissRequest(request.id)
+        for _ in 0..<5 { await store.cancelTurn() }
+        #expect(await client.cancelCalls.count == 1)
+        #expect(store.hasPendingCancellation)
+        await client.set(statusResult: .success(.applied))
+        await store.checkStatus(of: request.id)
+        #expect(!store.hasPendingCancellation)
+        #expect(store.visibleRequests.isEmpty)
     }
 
     @Test func demoCancelsTheObservedTurn() async {

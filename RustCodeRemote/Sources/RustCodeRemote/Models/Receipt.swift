@@ -49,11 +49,22 @@ public enum ReceiptState: Sendable, Equatable {
     }
 }
 
+public struct SessionCommandResult: Codable, Sendable, Equatable {
+    public var command: String
+    public var title: String
+    public var output: String
+    public init(command: String, title: String, output: String) {
+        self.command = command; self.title = title; self.output = output
+    }
+}
+
 public struct RequestReceipt: Sendable, Equatable {
     public var requestID: RequestID
+    public var commandResult: SessionCommandResult?
     public var state: ReceiptState
 
-    public init(requestID: RequestID, state: ReceiptState) {
+    public init(requestID: RequestID, state: ReceiptState, commandResult: SessionCommandResult? = nil) {
+        self.commandResult = commandResult
         self.requestID = requestID
         self.state = state
     }

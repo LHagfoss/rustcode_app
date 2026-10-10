@@ -124,6 +124,19 @@ struct SessionEndToEndTests {
         #expect(state.settings?.selectedModel == "fake")
         #expect(state.settings?.reasoningEffort == "high")
 
+        #expect(state.capabilities.contains("cancel_question"))
+        #expect(state.capabilities.contains("execute_command"))
+        let commandID = RequestID()
+        let status = try await client.executeCommand("/status", in: session.ref, requestID: commandID)
+        #expect(status.state == .applied)
+        #expect(status.commandResult?.command == "/status")
+        #expect(status.commandResult?.output.isEmpty == false)
+        let checked = try await client.getRequestStatus(commandID, in: session.ref)
+        #expect(checked == status)
+        #expect(state.items.isEmpty)
+        let staleQuestion = try await client.cancelQuestion("missing", in: session.ref, requestID: RequestID())
+        #expect(staleQuestion.state == .rejected(.staleQuestion))
+
         // A slash command from the phone is refused, and never runs.
         let slash = try await client.submit("/exit", to: session.ref, requestID: RequestID())
         #expect(slash.state == .rejected(.unsupportedOperation))
