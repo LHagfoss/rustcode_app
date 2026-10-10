@@ -8,6 +8,7 @@ struct OpenSessionSidebarAction: Sendable {
 
 extension EnvironmentValues {
     @Entry var openSessionSidebar = OpenSessionSidebarAction()
+    @Entry var isChatObscured = false
 }
 
 struct SessionsView: View {
@@ -28,7 +29,12 @@ struct SessionsView: View {
                 GeometryReader { geometry in
                     let width = min(geometry.size.width * 0.84, 360)
                     ZStack(alignment: .leading) {
-                        NavigationStack { chat }
+                        NavigationStack {
+                            chat
+                                .disabled(showsSidebar)
+                                .accessibilityHidden(showsSidebar)
+                                .environment(\.isChatObscured, showsSidebar)
+                        }
                             .overlay {
                                 if showsSidebar {
                                     Button { closeSidebar() } label: {

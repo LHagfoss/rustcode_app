@@ -4,6 +4,7 @@ import SwiftUI
 struct TranscriptView: View {
     @Environment(RemoteStore.self) private var store
     @Environment(\.openSessionSidebar) private var openSessions
+    @Environment(\.isChatObscured) private var isChatObscured
     @State private var sheet: AttentionSheet?
     @State private var selectable: SelectableText?
     @State private var showsRequests = false
@@ -36,10 +37,11 @@ struct TranscriptView: View {
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button("Show sessions", systemImage: "line.3.horizontal") { isComposerFocused = false; openSessions(toggle: true) }
+                    .accessibilityHidden(isChatObscured)
             }
             if let session = store.selectedSession {
                 ToolbarItem(placement: .topBarTrailing) {
-                    sessionMenu(session)
+                    sessionMenu(session).accessibilityHidden(isChatObscured)
                 }
             }
         }
