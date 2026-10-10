@@ -32,7 +32,7 @@ struct GatewayIntegrationTests {
             process.executableURL = URL(fileURLWithPath: binary)
             process.arguments = ["remote", "serve", "--port", "\(port)"]
             if let bind { process.arguments! += ["--bind", bind] }
-            process.environment = ["RUSTCODE_CONFIG_DIR": configuration.path, "PATH": "/usr/bin:/bin"]
+            process.environment = ["RUSTCODE_CONFIG_DIR": configuration.path, "PATH": "/usr/bin:/bin", "HOME": FileManager.default.homeDirectoryForCurrentUser.path]
             process.standardOutput = FileHandle.nullDevice
             process.standardError = FileHandle.nullDevice
             try process.run()
@@ -49,7 +49,7 @@ struct GatewayIntegrationTests {
             let command = Process()
             command.executableURL = URL(fileURLWithPath: binary)
             command.arguments = arguments
-            command.environment = ["RUSTCODE_CONFIG_DIR": configuration.path, "PATH": "/usr/bin:/bin"]
+            command.environment = ["RUSTCODE_CONFIG_DIR": configuration.path, "PATH": "/usr/bin:/bin", "HOME": FileManager.default.homeDirectoryForCurrentUser.path]
             let output = Pipe()
             command.standardOutput = output
             command.standardError = output

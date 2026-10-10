@@ -53,6 +53,49 @@ struct SessionEndToEndTests {
     }
 
     @Test(.timeLimit(.minutes(2)))
+    func attachDuringProviderlessToolKeepsOneNamedResult() async throws {
+        let model = try FakeModelServer(chunkDelay: .milliseconds(5), jsonCommand: "sleep 2; printf remote-tool-identity")
+        let port = try await model.start()
+        let gateway = try await GatewayIntegrationTests.Gateway(configFile: configFile(modelPort: port))
+        defer { gateway.stop(); model.stop() }
+        let client = LiveRemoteClient(codec: WireCodec(), requestTimeout: .seconds(20))
+        let credential = try await client.pair(.scanned(try gateway.pairingChallenge().payload), deviceName: "Tool identity test")
+        try await client.connect(using: credential)
+        let session = try await client.createSession(directory: gateway.configuration.path, requestID: RequestID())
+        let first = try await client.attach(session.ref, resumeAfter: nil)
+        #expect(try await client.submit("Run the command", to: session.ref, requestID: RequestID()).state == .applied)
+        var approved = false
+        for try await update in first.updates {
+            if let approval = update.changes.compactMap({ change -> PendingApproval? in
+                if case .approvalChanged(let approval) = change { return approval }; return nil
+            }).first {
+                #expect(try await client.resolveApproval(batchID: approval.id, decision: .approve, in: session.ref, requestID: RequestID()).state == .applied)
+                approved = true
+                break
+            }
+        }
+        #expect(approved)
+        try await Task.sleep(for: .milliseconds(200))
+        let late = try await client.attach(session.ref, resumeAfter: nil)
+        guard case .snapshot(var state) = late.start else { Issue.record("Missing running tool snapshot"); return }
+        for try await update in late.updates {
+            _ = state.apply(update)
+            if state.lastTurn?.outcome == "completed" { break }
+        }
+        func results(_ snapshot: SessionSnapshot) -> [ToolCall] {
+            snapshot.items.compactMap { if case .tool(let tool) = $0.content { return tool }; return nil }
+        }
+        #expect(results(state).count == 1)
+        #expect(results(state).first?.name == "run_command")
+        #expect(results(state).first?.output?.contains("remote-tool-identity") == true)
+        let final = try await client.attach(session.ref, resumeAfter: nil)
+        guard case .snapshot(let restored) = final.start else { Issue.record("Missing finished snapshot"); return }
+        #expect(results(restored).count == 1)
+        #expect(results(restored).first?.name == "run_command")
+        await client.disconnect()
+    }
+
+    @Test(.timeLimit(.minutes(2)))
     func phoneCreatesPersistentSessionInChosenFolderWithoutTerminal() async throws {
         let model = try FakeModelServer(chunkDelay: .milliseconds(5))
         let port = try await model.start()
