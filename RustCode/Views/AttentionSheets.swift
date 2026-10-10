@@ -3,7 +3,6 @@ import SwiftUI
 
 struct QuestionSheet: View {
     @Environment(RemoteStore.self) private var store
-    @Environment(\.dismiss) private var dismiss
     let question: PendingQuestion
 
     @State private var selection: Set<String> = []

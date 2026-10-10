@@ -366,7 +366,7 @@ public final class RemoteStore {
             return await cancelTurn()
         }
         guard snapshot.capabilities.contains("execute_command") else {
-            notice = "This host does not support remote slash commands. Update RustCode on the host."
+            notice = "This connection does not support remote slash commands. Update RustCode and restart its remote gateway on your Mac, then reconnect."
             return false
         }
         return await perform(.command(command), in: snapshot.session, key: "command:\(command)") { client, id in

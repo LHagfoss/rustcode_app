@@ -23,9 +23,11 @@ host. What that means, precisely:
 - **Not yet checked from a phone over a network.** Pairing an iPhone with a Mac over a LAN
   or NetBird, the local-network permission prompt and QR scanning with the camera have
   not been exercised; they need a person holding the phone.
-- **Approvals, questions, tools and sub-agents** are implemented against the published
-  golden frames and the in-app demo host. The end-to-end test does not produce them,
-  because its stand-in model only writes text.
+- **Questions and cancellation** are also tested through a real terminal session and
+  gateway: a local stand-in model calls `ask_question`, the client answers the first
+  question, cancels the next, and starts a fresh turn. Slash commands are checked without
+  adding model prompts. Approvals, general tools and sub-agents retain golden-frame and
+  demo coverage.
 - Use a current RustCode build with remote session sharing and timing metadata.
   The checked contract revision is recorded in the package's `Resources/remote-protocol/SOURCE.txt`.
 
