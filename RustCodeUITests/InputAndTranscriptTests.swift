@@ -212,7 +212,8 @@ final class InputAndTranscriptTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Include the port, for example 192.168.1.20:17879."].waitForExistence(timeout: 3))
     }
 
-    func testPairingFailureIsVisibleWithoutScrolling() {
+    func testPastingTheCodeConnectsAndExplainsAFailure() {
+        UIPasteboard.general.string = "12345678"
         let app = XCUIApplication()
         app.launch()
         let address = app.textFields["Host address and port"]
@@ -221,14 +222,15 @@ final class InputAndTranscriptTests: XCTestCase {
         // Nothing listens on the discard port, so the connection is refused.
         address.typeText("127.0.0.1:9")
         app.keyboards.buttons["Next:"].tap()
-        app.textFields["Pairing code"].typeText("12345678")
-        app.buttons["Dismiss pairing keyboard"].tap()
-        app.buttons["Connect"].tap()
+        // Pasting the last missing value connects without a tap on Connect.
+        app.descendants(matching: .any)["pairingKeyboardPaste"].tap()
         let failure = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Pairing failed.")).firstMatch
         XCTAssertTrue(failure.waitForExistence(timeout: 20))
+        XCTAssertTrue(failure.label.contains("Nothing is listening at 127.0.0.1:9"), "The reason names what failed: \(failure.label)")
+        XCTAssertEqual(app.textFields["Pairing code"].value as? String, "1234-5678")
         XCTAssertTrue(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: failure)], timeout: 3) == .completed, "The failure reason must be on screen")
         let screenshot = XCTAttachment(screenshot: app.screenshot())
-        screenshot.name = "Pairing failure at the top of the form"
+        screenshot.name = "Pairing failure with its reason"
         screenshot.lifetime = .keepAlways
         add(screenshot)
     }
@@ -309,7 +311,8 @@ final class InputAndTranscriptTests: XCTestCase {
         XCTAssertTrue(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: demo)], timeout: 3) == .completed, "Demo belongs in the header")
         let connect = app.buttons["Connect"]
         XCTAssertTrue(connect.isHittable, "The complete pairing form should fit without scrolling")
-        XCTAssertLessThanOrEqual(connect.frame.height, 52)
+        // A large control plus its row insets; taller would push the form off screen.
+        XCTAssertLessThanOrEqual(connect.frame.height, 68)
         mac.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
         XCTAssertTrue(app.keyboards.keys["1"].exists)

@@ -26,7 +26,13 @@ struct PairingView: View {
         NavigationStack {
             ScrollViewReader { proxy in
                 Form {
-                    // First in the form: below Connect it sat off screen.
+                    Section {
+                        scanSection
+                    } footer: {
+                        Text("Run /remote on your Mac, then scan its QR code. Use the same Wi-Fi.")
+                    }
+                    nearbySection
+                    manualSection
                     if case .failed(let message) = store.pairing {
                         Section {
                             Label(message, systemImage: "exclamationmark.circle")
@@ -38,17 +44,11 @@ struct PairingView: View {
                         }
                         .id(Self.errorID)
                     }
-                    Section {
-                        scanSection
-                    } footer: {
-                        Text("Run /remote on your Mac, then scan its QR code. Use the same Wi-Fi.")
-                    }
-                    nearbySection
-                    manualSection
                 }
                 .onChange(of: store.pairing) { _, pairing in
+                    // The reason sits below Connect; bring it on screen when it appears.
                     guard case .failed = pairing else { return }
-                    withAnimation { proxy.scrollTo(Self.errorID, anchor: .top) }
+                    withAnimation { proxy.scrollTo(Self.errorID, anchor: .bottom) }
                 }
             }
             .scrollDismissesKeyboard(.interactively)
@@ -119,8 +119,7 @@ struct PairingView: View {
                 .frame(maxWidth: .infinity)
         }
         .brandProminentButtonStyle()
-        .controlSize(.regular)
-        .frame(minHeight: 44)
+        .controlSize(.large)
         .disabled(isPairing)
         .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
         .listRowBackground(Color.clear)
@@ -179,21 +178,18 @@ struct PairingView: View {
         Section {
             HStack(spacing: 12) {
                 Text("Address").onTapGesture(perform: dismissKeyboard)
-                PairingAddressField(text: $address, isFocused: $addressFocused, onNext: focusCode)
+                PairingAddressField(text: $address, isFocused: $addressFocused, onNext: focusCode, onPaste: pasteAddress)
                 PasteButton(payloadType: String.self) { values in
-                    if let value = values.first { address = value.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    if let value = values.first { pasteAddress(value) }
                 }
                 .labelStyle(.iconOnly).controlSize(.small)
                 .accessibilityLabel("Paste address or QR payload")
             }
             HStack(spacing: 12) {
                 Text("Code").onTapGesture(perform: dismissKeyboard)
-                PairingCodeField(text: $code, isFocused: $codeFocused)
+                PairingCodeField(text: $code, isFocused: $codeFocused, onPaste: pasteCode)
                 PasteButton(payloadType: String.self) { values in
-                    if let value = values.first {
-                        code = PairingCodeInput.formatted(value)
-                        focusCode()
-                    }
+                    if let value = values.first { pasteCode(value) }
                 }
                 .labelStyle(.iconOnly).controlSize(.small)
                 .accessibilityLabel("Paste pairing code")
@@ -206,9 +202,8 @@ struct PairingView: View {
                 .frame(maxWidth: .infinity)
             }
             .brandProminentButtonStyle()
-            .controlSize(.regular)
-            .frame(minHeight: 44)
-            .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 2, trailing: 16))
+            .controlSize(.large)
+            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
             .disabled(isPairing || address.isEmpty || (!PairingCodeInput.isComplete(code) && !address.hasPrefix("{")))
         } header: {
             Text(discovery.hosts.first { $0.address == address }.map { "Connect to \($0.name)" } ?? "Address and pairing code")
@@ -224,6 +219,28 @@ struct PairingView: View {
             }
         }
         .onChange(of: address) { addressError = nil }
+    }
+
+    /// A paste that completes the form connects straight away; otherwise it
+    /// moves on to the code, which is the only thing left to enter.
+    private func pasteAddress(_ value: String) {
+        address = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !isPairing else { return }
+        if address.hasPrefix("{") || PairingCodeInput.isComplete(code) {
+            pairManually()
+        } else if parsedAddress != nil {
+            focusCode()
+        }
+    }
+
+    private func pasteCode(_ value: String) {
+        code = PairingCodeInput.formatted(value)
+        guard !isPairing else { return }
+        if PairingCodeInput.isComplete(code), parsedAddress != nil {
+            pairManually()
+        } else {
+            focusCode()
+        }
     }
 
     private func pairManually() {

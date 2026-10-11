@@ -7,14 +7,16 @@ import UIKit
 struct PairingCodeField: View {
     @Binding var text: String
     @Binding var isFocused: Bool
-    var body: some View { PairingTextField(text: $text, isFocused: $isFocused, isCode: true) }
+    var onPaste: (String) -> Void
+    var body: some View { PairingTextField(text: $text, isFocused: $isFocused, isCode: true, onPaste: onPaste) }
 }
 
 struct PairingAddressField: View {
     @Binding var text: String
     @Binding var isFocused: Bool
     var onNext: () -> Void
-    var body: some View { PairingTextField(text: $text, isFocused: $isFocused, isCode: false, onNext: onNext) }
+    var onPaste: (String) -> Void
+    var body: some View { PairingTextField(text: $text, isFocused: $isFocused, isCode: false, onNext: onNext, onPaste: onPaste) }
 }
 
 private struct PairingTextField: UIViewRepresentable {
@@ -23,6 +25,7 @@ private struct PairingTextField: UIViewRepresentable {
 
     var isCode: Bool
     var onNext: () -> Void = {}
+    var onPaste: (String) -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -116,10 +119,7 @@ private struct PairingTextField: UIViewRepresentable {
             guard let provider = itemProviders.first(where: { $0.canLoadObject(ofClass: NSString.self) }) else { return }
             _ = provider.loadObject(ofClass: NSString.self) { value, _ in
                 guard let value = value as? String else { return }
-                Task { @MainActor [weak self] in
-                    guard let self else { return }
-                    parent.text = parent.isCode ? PairingCodeInput.formatted(value) : value.trimmingCharacters(in: .whitespacesAndNewlines)
-                }
+                Task { @MainActor [weak self] in self?.parent.onPaste(value) }
             }
         }
 
