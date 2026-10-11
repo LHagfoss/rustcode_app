@@ -345,6 +345,86 @@ final class InputAndTranscriptTests: XCTestCase {
         XCTAssertEqual(app.textFields["Host address and port"].value as? String, "fixture.local:17879")
     }
 
+    func testPairingNearbyPickKeepsFocusAndCaretAtTheEnd() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-pairingNearbyHost"]
+        app.launch()
+        let mac = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Fixture Mac")).firstMatch
+        XCTAssertTrue(mac.waitForExistence(timeout: 5))
+        mac.tap()
+        let code = app.textFields["Pairing code"]
+        let focused = NSPredicate(format: "hasKeyboardFocus == true")
+        XCTAssertTrue(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: focused, object: code)], timeout: 3) == .completed, "Picking a Mac lands in the code")
+        code.typeText("0123")
+        // Picking the same Mac again keeps the digits, the focus and the caret.
+        mac.tap()
+        XCTAssertTrue(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: focused, object: code)], timeout: 3) == .completed)
+        XCTAssertTrue(app.keyboards.keys["1"].exists, "The number pad never left")
+        code.typeText("4567")
+        XCTAssertEqual(code.value as? String, "0123-4567")
+        // Moving to the address and back by its Next key returns to the end of the code.
+        let address = app.textFields["Host address and port"]
+        address.tap()
+        XCTAssertTrue(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: focused, object: address)], timeout: 3) == .completed)
+        XCTAssertEqual(code.value as? String, "0123-4567")
+        app.keyboards.buttons["Next:"].tap()
+        XCTAssertTrue(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: focused, object: code)], timeout: 3) == .completed)
+        code.typeText(XCUIKeyboardKey.delete.rawValue)
+        XCTAssertEqual(code.value as? String, "0123-456")
+    }
+
+    func testPairingCodeCaretStaysWhereTheDigitWasTyped() {
+        let app = XCUIApplication()
+        app.launch()
+        let code = app.textFields["Pairing code"]
+        XCTAssertTrue(code.waitForExistence(timeout: 5))
+        code.tap()
+        code.typeText("1234567")
+        // Put the caret before the first digit.
+        code.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.5)).tap()
+        app.keyboards.keys["9"].tap()
+        XCTAssertEqual(code.value as? String, "9123-4567")
+        // A caret that jumped to the end would drop this digit from the full code.
+        app.keyboards.keys["0"].tap()
+        XCTAssertEqual(code.value as? String, "9012-3456")
+        app.keyboards.keys["Delete"].tap()
+        app.keyboards.keys["Delete"].tap()
+        XCTAssertEqual(code.value as? String, "1234-56")
+    }
+
+    func testPairingInlinePasteFillsCodeAndFocusesIt() {
+        UIPasteboard.general.string = " 8765-43 "
+        let app = XCUIApplication()
+        app.launch()
+        let code = app.textFields["Pairing code"]
+        XCTAssertTrue(code.waitForExistence(timeout: 5))
+        app.buttons["Paste pairing code"].tap()
+        XCTAssertTrue(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "8765-43"), object: code)], timeout: 3) == .completed)
+        // An incomplete paste leaves the caret at its end, ready for the rest.
+        XCTAssertTrue(app.keyboards.keys["1"].waitForExistence(timeout: 3))
+        code.typeText("21")
+        XCTAssertEqual(code.value as? String, "8765-4321")
+    }
+
+    func testPairingKeyboardBarNeverCoversConnect() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-pairingNearbyHost"]
+        app.launch()
+        let connect = app.buttons["Connect"]
+        XCTAssertTrue(connect.waitForExistence(timeout: 5))
+        let done = app.buttons["pairingKeyboardDone"]
+        for field in [app.textFields["Pairing code"], app.textFields["Host address and port"]] {
+            field.tap()
+            XCTAssertTrue(done.waitForExistence(timeout: 3))
+            let clear = NSPredicate { _, _ in connect.frame.maxY <= done.frame.minY && field.frame.maxY <= done.frame.minY }
+            XCTAssertTrue(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: clear, object: nil)], timeout: 3) == .completed, "Connect (\(connect.frame)) and the field stay above the keyboard bar (\(done.frame))")
+        }
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Connect above the pairing keyboard bar"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
     func testLongResponseUsesCompactPreviewAndSelectionSheet() {
         let app = XCUIApplication()
         app.launchArguments = ["-demo", "-demoSession", "idle"]
