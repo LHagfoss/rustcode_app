@@ -14,6 +14,8 @@ struct PairingView: View {
     @State private var addressFocused = false
     @State private var codeFocused = false
 
+    private static let errorID = "pairingError"
+
     private var isPairing: Bool { store.pairing == .pairing }
 
     private var parsedAddress: HostAddress? {
@@ -22,21 +24,31 @@ struct PairingView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    scanSection
-                } footer: {
-                    Text("Run /remote on your Mac, then scan its QR code. Use the same Wi-Fi.")
-                }
-                nearbySection
-                manualSection
-                if case .failed(let message) = store.pairing {
-                    Section {
-                        Label(message, systemImage: "exclamationmark.circle")
-                            .font(.subheadline)
-                            .foregroundStyle(.red)
-                            .accessibilityLabel("Pairing failed. \(message)")
+            ScrollViewReader { proxy in
+                Form {
+                    // First in the form: below Connect it sat off screen.
+                    if case .failed(let message) = store.pairing {
+                        Section {
+                            Label(message, systemImage: "exclamationmark.circle")
+                                .font(.subheadline)
+                                .foregroundStyle(.red)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .textSelection(.enabled)
+                                .accessibilityLabel("Pairing failed. \(message)")
+                        }
+                        .id(Self.errorID)
                     }
+                    Section {
+                        scanSection
+                    } footer: {
+                        Text("Run /remote on your Mac, then scan its QR code. Use the same Wi-Fi.")
+                    }
+                    nearbySection
+                    manualSection
+                }
+                .onChange(of: store.pairing) { _, pairing in
+                    guard case .failed = pairing else { return }
+                    withAnimation { proxy.scrollTo(Self.errorID, anchor: .top) }
                 }
             }
             .scrollDismissesKeyboard(.interactively)

@@ -212,6 +212,27 @@ final class InputAndTranscriptTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Include the port, for example 192.168.1.20:17879."].waitForExistence(timeout: 3))
     }
 
+    func testPairingFailureIsVisibleWithoutScrolling() {
+        let app = XCUIApplication()
+        app.launch()
+        let address = app.textFields["Host address and port"]
+        XCTAssertTrue(address.waitForExistence(timeout: 5))
+        address.tap()
+        // Nothing listens on the discard port, so the connection is refused.
+        address.typeText("127.0.0.1:9")
+        app.keyboards.buttons["Next:"].tap()
+        app.textFields["Pairing code"].typeText("12345678")
+        app.buttons["Dismiss pairing keyboard"].tap()
+        app.buttons["Connect"].tap()
+        let failure = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Pairing failed.")).firstMatch
+        XCTAssertTrue(failure.waitForExistence(timeout: 20))
+        XCTAssertTrue(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: failure)], timeout: 3) == .completed, "The failure reason must be on screen")
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Pairing failure at the top of the form"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
     func testPairingScannerCanCloseAndReopenWithoutLosingTypedCode() {
         let app = XCUIApplication()
         app.launch()
@@ -246,12 +267,35 @@ final class InputAndTranscriptTests: XCTestCase {
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
         XCTAssertTrue(app.buttons["Paste pairing code"].exists)
         XCTAssertTrue(app.buttons["Dismiss pairing keyboard"].exists)
+        let paste = app.descendants(matching: .any)["pairingKeyboardPaste"]
+        XCTAssertTrue(paste.exists, "The keyboard toolbar offers Paste beside Done")
+        let keyboard = app.keyboards.firstMatch
+        XCTAssertLessThanOrEqual(app.buttons["pairingKeyboardDone"].frame.maxY, keyboard.frame.minY - 8, "Toolbar buttons keep a gap above the keys")
         let screenshot = XCTAttachment(screenshot: app.screenshot())
         screenshot.name = "Pairing inline controls with keyboard"
         screenshot.lifetime = .keepAlways
         add(screenshot)
         app.buttons["Dismiss pairing keyboard"].tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 3))
+    }
+
+    func testPairingKeyboardPasteFillsFocusedCode() {
+        UIPasteboard.general.string = "87654321"
+        let app = XCUIApplication()
+        app.launch()
+        let code = app.textFields["Pairing code"]
+        XCTAssertTrue(code.waitForExistence(timeout: 5))
+        code.tap()
+        let paste = app.descendants(matching: .any)["pairingKeyboardPaste"]
+        XCTAssertTrue(paste.waitForExistence(timeout: 3))
+        XCTAssertLessThanOrEqual(code.frame.maxY, paste.frame.minY, "The floating toolbar must not cover the field being edited")
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Pairing keyboard toolbar with Paste and Done"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        paste.tap()
+        XCTAssertEqual(code.value as? String, "8765-4321")
+        XCTAssertTrue(app.keyboards.firstMatch.exists, "Pasting keeps the field focused")
     }
 
     func testPairingNearbyMacFocusesCodeAndKeepsConnectCompact() {
