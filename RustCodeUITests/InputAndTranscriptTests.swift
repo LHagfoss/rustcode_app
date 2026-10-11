@@ -717,6 +717,48 @@ final class InputAndTranscriptTests: XCTestCase {
         XCTAssertTrue(app.buttons["Model and effort"].waitForExistence(timeout: 5))
     }
 
+    func testUnconfirmedNewSessionKeepsBrowsingAndAllowsAnotherFolder() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo", "-demoSession", "idle", "-demoDraft", "/history", "-demoUnconfirmedCreate"]
+        app.launch()
+        let field = composer(in: app)
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap()
+        app.buttons["Run command"].tap()
+        let create = app.buttons["New"]
+        XCTAssertTrue(create.waitForExistence(timeout: 5))
+        create.tap()
+        let start = app.buttons["Start session in selected folder"]
+        XCTAssertTrue(start.waitForExistence(timeout: 5))
+        start.tap()
+
+        // The unconfirmed request is named, with the host's words, and can be given up.
+        XCTAssertTrue(app.staticTexts["Unconfirmed Session"].waitForExistence(timeout: 5) || app.staticTexts["UNCONFIRMED SESSION"].exists)
+        XCTAssertTrue(app.staticTexts["session is starting; retry with the same request identifier to check it"].exists)
+        XCTAssertTrue(app.buttons["Check Again"].exists)
+        XCTAssertTrue(app.buttons["Cancel Request"].exists)
+        XCTAssertTrue(app.navigationBars["New Session"].buttons["Cancel"].isEnabled, "The sheet can always be left")
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Unconfirmed new session"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+
+        // Browsing still works, and another folder asks before abandoning the first request.
+        let projects = app.buttons["Projects"]
+        if !projects.waitForExistence(timeout: 2) { app.swipeUp() }
+        XCTAssertTrue(projects.waitForExistence(timeout: 5))
+        projects.tap()
+        XCTAssertTrue(app.buttons["Back to demo"].waitForExistence(timeout: 5))
+        XCTAssertEqual(start.value as? String, "/Users/demo/Projects")
+        XCTAssertTrue(start.isEnabled)
+        start.tap()
+        let replace = app.buttons["Start in Projects"]
+        XCTAssertTrue(replace.waitForExistence(timeout: 5))
+        replace.tap()
+        XCTAssertTrue(app.navigationBars["New Session"].waitForNonExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Model and effort"].waitForExistence(timeout: 5))
+    }
+
     func testSessionsDrawerDismissesWithoutLosingDraftAndSelectsAnotherSession() {
         let app = launchChat(draft: "Keep my sidebar draft")
         let show = app.buttons["Show sessions"]
