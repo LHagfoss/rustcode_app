@@ -1,13 +1,13 @@
 import RustCodeRemote
 import SwiftUI
 
-private struct NoticeToast: Identifiable {
+private struct NoticeToast: Identifiable, Equatable {
     let id: String
     let text: String
 
-    init(_ notice: (id: String, text: String)) {
-        id = notice.id
-        text = notice.text
+    init(id: String, text: String) {
+        self.id = id
+        self.text = text
     }
 }
 
@@ -81,7 +81,9 @@ struct TranscriptView: View {
     @FocusState private var isComposerFocused: Bool
     var presentsAttentionOnAppear = false
 
-    var body: some View {
+    var body: some View { stateManagedContent }
+
+    private var navigationContent: some View {
         Group {
             if let snapshot = store.attached {
                 transcript(snapshot)
@@ -112,6 +114,10 @@ struct TranscriptView: View {
             }
         }
         .environment(\.selectText, SelectTextAction { selectable = SelectableText(text: $0) })
+    }
+
+    private var presentationContent: some View {
+        navigationContent
         .sheet(item: $sheet) { sheet in
             switch sheet {
             case .question(let question):
@@ -130,6 +136,10 @@ struct TranscriptView: View {
         .sheet(item: $selectable) { selectable in
             SelectTextSheet(text: selectable.text)
         }
+    }
+
+    private var stateManagedContent: some View {
+        presentationContent
         .onChange(of: store.attached?.pendingQuestion?.id) { reconcileSheet() }
         .onChange(of: store.attached?.pendingApproval?.batchID) { reconcileSheet() }
         .onAppear { reconcileSheet() }
@@ -156,7 +166,7 @@ struct TranscriptView: View {
             }
             guard !fresh.isEmpty else { return }
             withAnimation(.snappy(duration: 0.25)) {
-                noticeToasts.append(contentsOf: fresh.map(NoticeToast.init))
+                noticeToasts.append(contentsOf: fresh)
                 if noticeToasts.count > 3 {
                     noticeToasts.removeFirst(noticeToasts.count - 3)
                 }
@@ -174,9 +184,9 @@ struct TranscriptView: View {
     }
 
     /// Notices in the attached transcript as `(id, text)`, watched for arrivals.
-    private var noticeFingerprint: [(id: String, text: String)] {
+    private var noticeFingerprint: [NoticeToast] {
         (store.attached?.items ?? []).compactMap { item in
-            if case .notice(let text) = item.content { (item.id, text) } else { nil }
+            if case .notice(let text) = item.content { NoticeToast(id: item.id, text: text) } else { nil }
         }
     }
 
@@ -189,12 +199,12 @@ struct TranscriptView: View {
     private func chatSensoryFeedback(for feedback: ChatFeedback?) -> SensoryFeedback? {
         guard scenePhase == .active, !isChatObscured, store.connection == .connected,
               let feedback, feedback.session == store.attached?.session else { return nil }
-        switch feedback.kind {
-        case .started: .impact(weight: .light, intensity: 0.6)
-        case .completed: .success
-        case .cancelled: .impact(weight: .medium, intensity: 0.8)
-        case .failed: .error
-        case .attention: .warning
+        return switch feedback.kind {
+        case .started: SensoryFeedback.impact(weight: .light, intensity: 0.6)
+        case .completed: SensoryFeedback.success
+        case .cancelled: SensoryFeedback.impact(weight: .medium, intensity: 0.8)
+        case .failed: SensoryFeedback.error
+        case .attention: SensoryFeedback.warning
         }
     }
 
