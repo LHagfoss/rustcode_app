@@ -1,6 +1,16 @@
 import RustCodeRemote
 import SwiftUI
 
+private struct NoticeToast: Identifiable {
+    let id: String
+    let text: String
+
+    init(_ notice: (id: String, text: String)) {
+        id = notice.id
+        text = notice.text
+    }
+}
+
 struct TranscriptView: View {
     @Environment(RemoteStore.self) private var store
     @Environment(\.openSessionSidebar) private var openSessions
@@ -14,6 +24,12 @@ struct TranscriptView: View {
     @State private var hasAutoPresented = false
     @State private var followsLatest = true
     @State private var isDraggingTranscript = false
+    /// Session notices announced as a transient toast instead of inline rows.
+    @State private var noticeToasts: [NoticeToast] = []
+    /// Notice ids already seen for the attached session, so history does not
+    /// announce itself when a session is opened.
+    @State private var seenNoticeIDs: Set<String> = []
+    @State private var hasSeededNotices = false
     @FocusState private var isComposerFocused: Bool
     var presentsAttentionOnAppear = false
 
@@ -85,6 +101,26 @@ struct TranscriptView: View {
             followsLatest = true
             isDraggingTranscript = false
             hasAutoPresented = false
+            seenNoticeIDs = []
+            hasSeededNotices = false
+            noticeToasts = []
+        }
+        .onChange(of: noticeFingerprint) { _, notices in
+            let fresh = notices.filter { !seenNoticeIDs.contains($0.id) }
+            seenNoticeIDs.formUnion(notices.map(\.id))
+            guard hasSeededNotices else {
+                // The first fingerprint after attaching is history: seed the
+                // seen set silently instead of announcing old notices.
+                hasSeededNotices = true
+                return
+            }
+            guard !fresh.isEmpty else { return }
+            withAnimation(.snappy(duration: 0.25)) {
+                noticeToasts.append(contentsOf: fresh.map(NoticeToast.init))
+                if noticeToasts.count > 3 {
+                    noticeToasts.removeFirst(noticeToasts.count - 3)
+                }
+            }
         }
         #if DEBUG
         .task(id: store.attached?.items.isEmpty) {
@@ -95,6 +131,19 @@ struct TranscriptView: View {
             if let text { selectable = SelectableText(text: MarkdownText.plainText(text)) }
         }
         #endif
+    }
+
+    /// Notices in the attached transcript as `(id, text)`, watched for arrivals.
+    private var noticeFingerprint: [(id: String, text: String)] {
+        (store.attached?.items ?? []).compactMap { item in
+            if case .notice(let text) = item.content { (item.id, text) } else { nil }
+        }
+    }
+
+    private func dismissToast(_ id: String) {
+        withAnimation(.snappy(duration: 0.25)) {
+            noticeToasts.removeAll { $0.id == id }
+        }
     }
 
     private func sessionMenu(_ session: SessionSummary) -> some View {
@@ -188,6 +237,53 @@ struct TranscriptView: View {
                 }
             }
             .accessibilityIdentifier("transcript")
+            .overlay(alignment: .bottomTrailing) {
+                if !followsLatest {
+                    Button {
+                        withAnimation(.snappy(duration: 0.25)) {
+                            followsLatest = true
+                            proxy.scrollTo("transcript-end", anchor: .bottom)
+                        }
+                    } label: {
+                        Label("Latest", systemImage: "arrow.down")
+                            .font(.subheadline.weight(.semibold))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .glassSurface(in: .capsule, interactive: true)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Scroll to the newest message")
+                    .padding(.trailing, 16)
+                    .padding(.bottom, 12)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+            .overlay(alignment: .top) {
+                VStack(spacing: 8) {
+                    ForEach(noticeToasts) { toast in
+                        HStack(alignment: .top, spacing: 10) {
+                            Image(systemName: "info.circle.fill").foregroundStyle(.secondary)
+                            Text(toast.text).font(.footnote).lineLimit(3)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            Button("Dismiss", systemImage: "xmark") { dismissToast(toast.id) }
+                                .labelStyle(.iconOnly)
+                                .accessibilityLabel("Dismiss notice")
+                        }
+                        .padding(12)
+                        .glassSurface(in: .rect(cornerRadius: 16), interactive: false)
+                        .contextMenu {
+                            Button("Copy", systemImage: "doc.on.doc") { Clipboard.copy(toast.text) }
+                        }
+                        .task(id: toast.id) {
+                            try? await Task.sleep(for: .seconds(5))
+                            dismissToast(toast.id)
+                        }
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+            }
             // Keep the editable field in a stable safe-area inset. safeAreaBar relocates
             // its content as the keyboard changes, which breaks the field's focus binding.
             .safeAreaInset(edge: .bottom, spacing: 0) {
