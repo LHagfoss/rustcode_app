@@ -233,7 +233,7 @@ struct TranscriptView: View {
         let footers = TimingPresentation.footerOwners(items: snapshot.items, lastTurn: snapshot.lastTurn)
         return ScrollViewReader { proxy in
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
+                LazyVStack(alignment: .leading, spacing: 18) {
                     if snapshot.historyCursor != nil {
                         Button {
                             followsLatest = false
@@ -253,7 +253,9 @@ struct TranscriptView: View {
                         .disabled(store.isLoadingHistory)
                     }
                     ForEach(snapshot.items) { item in
-                        TranscriptRow(item: item, footer: footers[item.id])
+                        // Skip rebuilding a row whose content has not changed: only the
+                        // streaming row recomputes, so a growing transcript stays smooth.
+                        TranscriptRow(item: item, footer: footers[item.id]).equatable()
                     }
                     if isThinking(snapshot) {
                         StreamingIndicator()
