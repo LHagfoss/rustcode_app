@@ -81,6 +81,10 @@ struct TranscriptView: View {
     @FocusState private var isComposerFocused: Bool
     var presentsAttentionOnAppear = false
 
+    /// How close to the tail still counts as following the newest message. Just past
+    /// this, a scroll up hands control to the reader and shows the Latest button.
+    private static let followThreshold: CGFloat = 24
+
     var body: some View { stateManagedContent }
 
     private var navigationContent: some View {
@@ -284,10 +288,18 @@ struct TranscriptView: View {
             .onScrollPhaseChange { _, phase in
                 isDraggingTranscript = phase == .interacting || phase == .decelerating
             }
-            .onScrollGeometryChange(for: Bool.self) { geometry in
-                geometry.contentOffset.y + geometry.containerSize.height - geometry.contentInsets.bottom >= geometry.contentSize.height - 60
-            } action: { _, atBottom in
-                if isDraggingTranscript { followsLatest = atBottom }
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                // How far the content reaches below the visible bottom edge. Positive
+                // once the reader has scrolled up away from the newest message.
+                geometry.contentSize.height - geometry.contentInsets.bottom
+                    - (geometry.contentOffset.y + geometry.containerSize.height)
+            } action: { _, distanceFromBottom in
+                // Only a deliberate scroll changes whether we follow the tail, so a
+                // growing answer never re-engages follow on its own. Any upward scroll
+                // past a small threshold disengages at once and reveals the Latest
+                // button; returning to the tail follows again.
+                guard isDraggingTranscript else { return }
+                followsLatest = distanceFromBottom <= Self.followThreshold
             }
             .simultaneousGesture(TapGesture().onEnded { isComposerFocused = false })
             .onChange(of: store.commandResult) { _, result in

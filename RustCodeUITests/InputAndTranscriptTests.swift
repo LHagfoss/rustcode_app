@@ -505,6 +505,26 @@ final class InputAndTranscriptTests: XCTestCase {
         XCTAssertEqual(composer(in: app).value as? String, "First line\nSecond line")
     }
 
+    func testScrollingUpShowsLatestButtonInsteadOfFollowingOutput() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo", "-demoSession", "idle"]
+        app.launch()
+        let transcript = app.scrollViews.matching(identifier: "transcript").firstMatch
+        XCTAssertTrue(transcript.waitForExistence(timeout: 5))
+        // At the tail there is nothing to catch up to.
+        XCTAssertFalse(app.buttons["Latest"].exists)
+        transcript.swipeDown()
+        transcript.swipeDown()
+        let latest = app.buttons["Latest"]
+        XCTAssertTrue(latest.waitForExistence(timeout: 3))
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Latest button after scrolling up"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        latest.tap()
+        XCTAssertTrue(latest.waitForNonExistence(timeout: 3))
+    }
+
     func testThinkingExpandsAndMarkdownTableIsRendered() {
         let app = XCUIApplication()
         app.launchArguments = ["-demo", "-demoSession", "idle"]
