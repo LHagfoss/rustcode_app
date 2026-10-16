@@ -274,6 +274,31 @@ final class InputAndTranscriptTests: XCTestCase {
         XCTAssertEqual(code.value as? String, "123", "Backspace must pass the automatic dash")
     }
 
+    /// The Simulator has no camera, so capture fails to configure. Reaching that
+    /// error on every open, retry and reopen proves the scanner always asks the
+    /// camera to start, instead of sitting on a black view with no way forward.
+    func testPairingScannerAlwaysStartsCaptureOnEveryOpenAndRetry() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-scannerWithoutCamera"]
+        app.launch()
+        dismissLaunchNotice(in: app)
+        let scan = app.buttons["Scan Pairing Code"]
+        XCTAssertTrue(scan.waitForExistence(timeout: 5))
+        let failure = app.staticTexts["Camera Couldn’t Start"]
+        for cycle in 0..<8 {
+            scan.tap()
+            XCTAssertTrue(failure.waitForExistence(timeout: 10), "Open \(cycle) never started capture")
+            app.buttons["Try Again"].tap()
+            XCTAssertTrue(failure.waitForExistence(timeout: 10), "Retry \(cycle) never started capture")
+            if cycle.isMultiple(of: 2) {
+                app.buttons["Enter Code Manually"].tap()
+            } else {
+                app.navigationBars["Scan Pairing Code"].buttons["Cancel"].tap()
+            }
+            XCTAssertTrue(app.navigationBars["Scan Pairing Code"].waitForNonExistence(timeout: 3))
+        }
+    }
+
     func testPairingUsesInlinePasteAndKeyboardDone() {
         let app = XCUIApplication()
         app.launch()
