@@ -1,3 +1,5 @@
+> **Moved.** The iOS app now lives in [`LHagfoss/rustcode`](https://github.com/LHagfoss/rustcode) under [`ios/`](https://github.com/LHagfoss/rustcode/tree/main/ios), with its full history, and ships in every RustCode release. This repository is archived.
+
 # RustCode Remote
 
 A native iOS app that is a remote control for [RustCode](https://github.com/LHagfoss/rustcode),
